@@ -2,13 +2,51 @@
 
 A self-serve, scored lead-qualification assessment. A business owner answers 12
 questions; the app scores them in real time, shows a personalized result with a
-dollar figure attached to their biggest bottleneck, and pushes the full payload
-to a GoHighLevel (GHL) inbound webhook that routes them into the right
-nurture or sales workflow.
+dollar figure attached to their biggest bottleneck, and sends the payload to an
+n8n backend that captures the lead server-side, calls Claude to generate a
+ranked top-3 AI opportunity report, and routes the enriched contact into the
+right GoHighLevel (GHL) nurture or sales workflow.
+
+## Architecture
+
+```
+Browser (instant, client-side)
+  │
+  │  POST  (keepalive:true)
+  ▼
+n8n Intake Webhook  ──►  200 OK  (lead captured server-side)
+  │
+  │  (async, ~3-10 s)
+  ▼
+Claude API (claude-sonnet-4-6)
+  │  Returns: top-3 focus areas ranked + reasoning + tool suggestions
+  ▼
+Parse & Build Report
+  │  Appends theresanaiforthat.com search URL per area
+  │  Builds GHL-ready text + HTML report fragments
+  ▼
+GHL Inbound Webhook
+  │  Creates/updates contact with all fields + report
+  ▼
+GHL Workflows (Tier 1–4 routing → email → CTA)
+```
+
+**Why n8n?** The previous browser-to-GHL approach could silently lose leads if
+the user closed the tab mid-retry. n8n captures the submission the moment it
+arrives — before Claude even runs — so no lead is ever lost.
+
+**Why Claude?** The deterministic scoring engine (client-side) quantifies one
+bottleneck well but is coarse at prescribing. Claude ranks all 12 answers
+together to produce a top-3 prioritized plan: which areas matter most, why,
+and which existing tools to explore — making the follow-up call more valuable
+without adding friction to the assessment itself.
 
 Built as a single-page React + Tailwind app. The entire assessment — questions,
 scoring engine, result screen, webhook push — lives in one file:
 [`src/App.jsx`](src/App.jsx).
+
+The n8n workflow is in [`n8n/`](n8n/) and the Claude system prompt is in
+[`prompts/`](prompts/).
 
 ## Quick start
 
@@ -25,19 +63,17 @@ Two constants at the top of `src/App.jsx`:
 
 | Constant | What it is |
 | --- | --- |
-| `GHL_WEBHOOK_URL` | Your GHL inbound webhook URL (Workflow > Inbound Webhook trigger). See [GHL_SETUP.md](GHL_SETUP.md). |
+| `INTAKE_WEBHOOK_URL` | Your n8n intake webhook URL (from the Intake Webhook node after activating the workflow). See [n8n/README.md](n8n/README.md). |
 | `CALENDAR_URL` | Your GHL calendar booking link, embedded on the result screen for hot leads and anyone who asked for a call. |
 
 Until the webhook URL is configured, submissions log to the console instead of
 POSTing (so you can preview the full flow locally).
 
-### Optional serverless relay
+### Changing the Claude model
 
-The app POSTs to GHL directly from the browser by default. If you prefer to
-keep the webhook URL out of client code, deploy with the included
-[`api/ghl.js`](api/ghl.js) function (Vercel format): set the `GHL_WEBHOOK_URL`
-environment variable in your hosting dashboard and point the app constant at
-`"/api/ghl"`.
+Open the **Prepare Claude Request** Code node in n8n and change the `model`
+field. See [n8n/README.md](n8n/README.md) for the available options and their
+cost/quality trade-offs.
 
 ## Deploying and embedding in a GHL funnel
 
@@ -92,9 +128,12 @@ they ride along in the webhook payload for routing.
 
 ### Webhook resilience
 
-If the GHL POST fails, the result screen still renders, the app retries in the
-background (5s / 15s / 45s backoff), and after the final failure the prospect
-sees a calm "we'll email your results" fallback instead of an error.
+Submissions post to n8n with `keepalive: true`, which keeps the request alive
+even if the user closes the tab immediately. n8n stores the lead before Claude
+runs, so no submission is ever lost at the network layer. If n8n itself is
+unreachable, the app retries in the background (5s / 15s / 45s backoff), and
+after the final failure the prospect sees a calm "we'll email your results"
+fallback instead of an error.
 
 ## Spec interpretation notes
 

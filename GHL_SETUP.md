@@ -6,18 +6,27 @@ the nurture workflows and email template.
 
 ## 1. Inbound webhook
 
+The assessment no longer posts to GHL directly. The browser posts to an **n8n
+webhook** instead. n8n responds immediately, runs the Claude report pipeline,
+and then forwards the enriched payload to GHL.
+
 1. In your sub-account: **Automation > Workflows > Create Workflow > Start from
    scratch**.
 2. Add trigger: **Inbound Webhook**.
-3. Copy the webhook URL and paste it into `GHL_WEBHOOK_URL` at the top of
-   `src/App.jsx` (or into the `GHL_WEBHOOK_URL` env var if using the
-   `api/ghl.js` relay).
+3. Copy the webhook URL and paste it into the **GHL - Push Enriched Lead** node
+   inside the n8n workflow (see `n8n/README.md`). Do not paste it into
+   `src/App.jsx` — that constant now holds the n8n webhook URL instead.
 4. Submit one test assessment, then use GHL's "mapping reference" on the
-   trigger to map the payload fields below.
+   trigger to map the payload fields below (original fields plus the five new
+   report fields).
 
 ## 2. Contact custom fields
 
-Create these exact field keys (Settings > Custom Fields, object: Contact):
+Create these exact field keys (Settings > Custom Fields, object: Contact).
+The first 13 are the original assessment fields; the last 5 are added by the
+n8n Claude pipeline and arrive in the same GHL push a few seconds later.
+
+### Original assessment fields
 
 | GHL custom field | Payload key | Type |
 | --- | --- | --- |
@@ -34,6 +43,26 @@ Create these exact field keys (Settings > Custom Fields, object: Contact):
 | `assessment_magic_wand` | `magicWand` | Text (multi-line) |
 | `assessment_named_bottleneck` | `namedBottleneck` | Text (multi-line) |
 | `assessment_delivery_pref` | `deliveryPreference` | Text |
+
+### Claude report fields (added by n8n)
+
+| GHL custom field | Payload key | Type |
+| --- | --- | --- |
+| `assessment_top_areas` | `assessment_top_areas` | Text (multi-line) |
+| `assessment_tool_suggestions` | `assessment_tool_suggestions` | Text (multi-line) |
+| `assessment_report_html` | `assessment_report_html` | Text (multi-line) |
+| `assessment_report_headline` | `assessment_report_headline` | Text |
+| `assessment_report_summary` | `assessment_report_summary` | Text |
+
+**`assessment_top_areas`** contains the full ranked text block, one area per
+section, with the Claude reasoning, tool suggestions, and the
+theresanaiforthat.com link for each area. Use this as the main body merge
+field in the report email.
+
+**`assessment_report_html`** is a ready-to-use HTML fragment (no `<html>` or
+`<body>` wrapper) containing headings, paragraphs, and anchor links. Paste
+it into a GHL "Custom HTML" email block or use it via a merge field if your
+email builder supports raw HTML merge fields.
 
 Notes:
 
@@ -90,7 +119,7 @@ can quote the prospect's own words.
 
 ## 4. Personalized report email template
 
-Keep it under 200 words, one CTA button, no hype. GHL merge syntax for contact
+Keep it under 300 words, one CTA button, no hype. GHL merge syntax for contact
 custom fields is `{{contact.assessment_annual_roi}}` (the `custom_values.*`
 namespace is for account-level values, not contact fields).
 
@@ -105,26 +134,36 @@ namespace is for account-level values, not contact fields).
 ```
 Hi {{contact.first_name}},
 
-Thanks for taking the AI Readiness Check. Here is the short version.
+Thanks for taking the AI Readiness Check. Here is what stands out.
 
-Your bottleneck:
-{{contact.assessment_named_bottleneck}}
+{{contact.assessment_report_headline}}
 
-The number that matters: automating this could give you back roughly
+{{contact.assessment_report_summary}}
+
+Your top 3 areas to fix, in order:
+
+{{contact.assessment_top_areas}}
+
+The number that matters: automating these could give you back roughly
 ${{contact.assessment_annual_roi}} per year in reclaimed time and lost
 revenue. Treat that as a directional estimate, not a guarantee.
 
 In your own words, fixing this means:
 "{{contact.assessment_magic_wand}}"
 
-Recommended direction: {{contact.assessment_tool_rec}}. The exact setup
-depends on your tools, which we can map together on a quick call.
+The exact setup depends on your specific tools and workflows — that's what
+we'll map together on a quick call.
 
 [CTA BUTTON]
 
 Talk soon,
 {{user.name}}
 ```
+
+**Alternative (HTML email builder):** Paste `{{contact.assessment_report_html}}`
+into a Custom HTML email block for a formatted version with headings, tool links,
+and theresanaiforthat.com browse links per area. This requires your GHL email
+builder to support raw HTML merge fields.
 
 **CTA button by branch:**
 

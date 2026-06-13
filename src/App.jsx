@@ -4,10 +4,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
    CONFIG — edit these before deploying
    ════════════════════════════════════════════════════════════════════════ */
 
-// GHL inbound webhook URL (Workflow > Trigger: Inbound Webhook, or
-// Settings > Integrations). Point this at "/api/ghl" instead to route
-// through the optional serverless relay in /api/ghl.js.
-const GHL_WEBHOOK_URL = "PASTE_YOUR_GHL_INBOUND_WEBHOOK_URL_HERE";
+// n8n intake webhook URL — receives every submission instantly (lead captured
+// server-side), then calls Claude async and forwards the enriched payload to
+// GHL. See n8n/README.md for the importable workflow and setup steps.
+const INTAKE_WEBHOOK_URL = "PASTE_YOUR_N8N_WEBHOOK_URL_HERE";
 
 // GHL calendar booking link, embedded on the result screen for Tier 1/2
 // and whenever the prospect asks for a call.
@@ -357,6 +357,12 @@ export function buildPayload(answers, contact, results, submittedAt) {
   };
 }
 
+// Encodes a query into the TAAFT top-rated search URL.
+// Spaces → "+" (TAAFT's confirmed URL format); other chars pass through.
+export function buildTaaftSearchUrl(query) {
+  return `https://theresanaiforthat.com/s/${query.trim().toLowerCase().replace(/\s+/g, "+")}/top-rated/`;
+}
+
 /* ════════════════════════════════════════════════════════════════════════
    PROSPECT-FACING RESULT COPY
    ════════════════════════════════════════════════════════════════════════ */
@@ -613,16 +619,17 @@ export default function App() {
   // retries are queued in the background and the UI falls back to a calm
   // "we'll email your results" message if every attempt fails.
   const sendToGHL = useCallback((payload, attempt = 0) => {
-    if (GHL_WEBHOOK_URL.startsWith("PASTE_")) {
-      console.warn("GHL_WEBHOOK_URL is not configured; skipping webhook POST.", payload);
+    if (INTAKE_WEBHOOK_URL.startsWith("PASTE_")) {
+      console.warn("INTAKE_WEBHOOK_URL is not configured; skipping webhook POST.", payload);
       setWebhookStatus("sent");
       return;
     }
     setWebhookStatus("sending");
-    fetch(GHL_WEBHOOK_URL, {
+    fetch(INTAKE_WEBHOOK_URL, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
+      keepalive: true,
     })
       .then((res) => {
         if (!res.ok) throw new Error(`Webhook responded ${res.status}`);

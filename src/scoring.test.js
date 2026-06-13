@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildNamedBottleneck,
   buildPayload,
+  buildTaaftSearchUrl,
   computeResults,
   formatCurrency,
   priorityBandFor,
@@ -145,6 +146,26 @@ describe("named bottleneck", () => {
   it("handles the overwhelmed lever with the all-three phrasing", () => {
     const text = buildNamedBottleneck({ ...exampleAnswers, lever: "overwhelmed" });
     expect(text).toContain("revenue, time, and customer experience are all hurting");
+  });
+});
+
+describe("TAAFT search URL builder", () => {
+  it("joins words with + and appends /top-rated/", () => {
+    expect(buildTaaftSearchUrl("follow-up emails")).toBe(
+      "https://theresanaiforthat.com/s/follow-up+emails/top-rated/"
+    );
+    expect(buildTaaftSearchUrl("proposal generation")).toBe(
+      "https://theresanaiforthat.com/s/proposal+generation/top-rated/"
+    );
+    expect(buildTaaftSearchUrl("meeting notes")).toBe(
+      "https://theresanaiforthat.com/s/meeting+notes/top-rated/"
+    );
+  });
+
+  it("normalises case and trims whitespace", () => {
+    expect(buildTaaftSearchUrl("  Invoice Automation  ")).toBe(
+      "https://theresanaiforthat.com/s/invoice+automation/top-rated/"
+    );
   });
 });
 
