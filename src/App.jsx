@@ -10,8 +10,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 const INTAKE_WEBHOOK_URL = "PASTE_YOUR_N8N_WEBHOOK_URL_HERE";
 
 // GHL calendar booking link, embedded on the result screen for Tier 1/2
-// and whenever the prospect asks for a call.
-const CALENDAR_URL = "PASTE_YOUR_GHL_CALENDAR_LINK_HERE";
+// and whenever the prospect asks for a call. GHL's form_embed.js (loaded
+// automatically by CalendarEmbed from this URL's domain) auto-sizes the widget.
+const CALENDAR_URL = "https://link.storyadvantage.co.za/widget/booking/OqhZq68Xp8tgjqTnshgm";
 
 // Webhook retry backoff (ms) after a failed POST. Results always render
 // regardless of webhook status.
@@ -513,6 +514,25 @@ function TextField({ label, error, ...props }) {
 
 function CalendarEmbed({ prominent }) {
   const configured = !CALENDAR_URL.startsWith("PASTE_");
+
+  // Load GHL's form_embed.js once (from the booking link's own domain). It
+  // listens for the booking widget's height messages and resizes the iframe;
+  // our ResizeObserver then re-posts the new total height to the funnel parent.
+  useEffect(() => {
+    if (!configured) return;
+    let src;
+    try {
+      src = `${new URL(CALENDAR_URL).origin}/js/form_embed.js`;
+    } catch {
+      return;
+    }
+    if (document.querySelector(`script[src="${src}"]`)) return;
+    const s = document.createElement("script");
+    s.src = src;
+    s.async = true;
+    document.body.appendChild(s);
+  }, [configured]);
+
   if (!configured) {
     return (
       <div className="rounded-xl border border-dashed border-slate-300 bg-white p-4 text-sm text-slate-500">
@@ -526,7 +546,8 @@ function CalendarEmbed({ prominent }) {
       <iframe
         src={CALENDAR_URL}
         title="Book a 15-minute call"
-        className="h-[620px] w-full border-0"
+        scrolling="no"
+        className="h-[640px] w-full border-0"
       />
     </div>
   );
