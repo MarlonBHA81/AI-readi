@@ -922,27 +922,8 @@ function QuestionScreen({ question, answers, setAnswers, onSelect, onNext, isLas
   );
 }
 
-function OptInCard({ contact, setContact, errors, onRequestReport, webhookStatus }) {
+function OptInCard({ contact, setContact, errors, onRequestReport, webhookStatus, showCalendar }) {
   const set = (key) => (e) => setContact((p) => ({ ...p, [key]: e.target.value }));
-
-  if (webhookStatus === "sent") {
-    return (
-      <div className="rounded-2xl bg-white p-6 shadow-sm sm:p-8">
-        <p className="text-xs font-semibold uppercase tracking-wide text-accent">
-          You're all set
-        </p>
-        <h2 className="mt-1 text-lg font-bold leading-snug text-navy">
-          Your full report is on its way
-        </h2>
-        <p className="mt-2 text-[15px] leading-relaxed text-slate-600">
-          We're putting together your top 3 priority areas — ranked in order, with
-          the reasoning for each and the specific existing tools worth trying — and
-          sending it to {contact.email.trim()}. It usually lands within a few
-          minutes.
-        </p>
-      </div>
-    );
-  }
 
   return (
     <div className="rounded-2xl bg-white p-6 shadow-sm sm:p-8">
@@ -950,12 +931,17 @@ function OptInCard({ contact, setContact, errors, onRequestReport, webhookStatus
         Go deeper — free
       </p>
       <h2 className="mt-1 text-lg font-bold leading-snug text-navy">
-        Get your top 3 AI priorities, ranked
+        {showCalendar
+          ? "Get your top 3 priorities — then book your call"
+          : "Get your top 3 AI priorities, ranked"}
       </h2>
       <p className="mt-2 text-[15px] leading-relaxed text-slate-600">
         Above is your single biggest bottleneck. Your full report ranks the top 3
         areas to fix first, in order, with the reasoning for each and the specific
-        existing tools worth trying. We'll email it to you.
+        existing tools worth trying.{" "}
+        {showCalendar
+          ? "Enter your details once — we'll email the report, and you can grab a call slot right here with everything already filled in."
+          : "We'll email it to you."}
       </p>
       <form
         className="mt-5 space-y-4"
@@ -1013,7 +999,11 @@ function OptInCard({ contact, setContact, errors, onRequestReport, webhookStatus
           />
         </div>
         <PrimaryButton type="submit" disabled={webhookStatus === "sending"}>
-          {webhookStatus === "sending" ? "Sending..." : "Email me my top 3"}
+          {webhookStatus === "sending"
+            ? "Sending..."
+            : showCalendar
+              ? "Get my report and booking"
+              : "Email me my top 3"}
         </PrimaryButton>
         {webhookStatus === "failed" && (
           <p className="text-center text-xs text-red-600">
@@ -1022,7 +1012,7 @@ function OptInCard({ contact, setContact, errors, onRequestReport, webhookStatus
           </p>
         )}
         <p className="text-center text-xs text-slate-400">
-          We only use this to send your report. No spam.
+          We only use this to send your report{showCalendar ? " and set up your call" : ""}. No spam.
         </p>
       </form>
     </div>
@@ -1030,17 +1020,18 @@ function OptInCard({ contact, setContact, errors, onRequestReport, webhookStatus
 }
 
 function ResultScreen({ results, answers, contact, setContact, errors, onRequestReport, webhookStatus }) {
-  if (!results) return null;
-  const roi = formatCurrency(results.annualROI);
-  const showCalendar = results.tier.tier <= 2 || answers.delivery === "call";
-
-  // Prefill the booking widget only once the lead has submitted the opt-in
-  // (status leaves "idle"), so the iframe src is stable while they type and
-  // changes exactly once — to the prefilled URL — when their details are set.
+  // Prefill the booking widget from the details captured in the opt-in form.
+  // Stable while the lead types (status "idle" → base URL); resolves to the
+  // prefilled URL exactly once, when they submit and the booking appears.
   const bookingUrl = useMemo(
     () => (webhookStatus === "idle" ? CALENDAR_URL : buildBookingUrl(CALENDAR_URL, contact)),
     [webhookStatus, contact]
   );
+
+  if (!results) return null;
+  const roi = formatCurrency(results.annualROI);
+  const showCalendar = results.tier.tier <= 2 || answers.delivery === "call";
+  const submitted = webhookStatus === "sent";
 
   return (
     <div className="space-y-4">
@@ -1088,47 +1079,68 @@ function ResultScreen({ results, answers, contact, setContact, errors, onRequest
         </div>
       </div>
 
-      <OptInCard
-        contact={contact}
-        setContact={setContact}
-        errors={errors}
-        onRequestReport={onRequestReport}
-        webhookStatus={webhookStatus}
-      />
+      {submitted ? (
+        <div className="rounded-2xl bg-white p-6 shadow-sm sm:p-8">
+          <p className="text-xs font-semibold uppercase tracking-wide text-accent">
+            You're all set
+          </p>
+          <h2 className="mt-1 text-lg font-bold leading-snug text-navy">
+            Your full report is on its way
+          </h2>
+          <p className="mt-2 text-[15px] leading-relaxed text-slate-600">
+            We're putting together your top 3 priority areas — ranked in order, with
+            the reasoning for each and the specific existing tools worth trying — and
+            sending it to {contact.email.trim()}. It usually lands within a few
+            minutes.
+          </p>
 
-      <div className="rounded-2xl bg-white p-6 shadow-sm sm:p-8">
-        <h2 className="text-lg font-bold leading-snug text-navy">
-          {TIER_CTA[results.tier.tier]}
-        </h2>
+          {showCalendar && (
+            <div className="mt-6 border-t border-slate-100 pt-6">
+              <h3 className="text-base font-bold leading-snug text-navy">
+                {TIER_CTA[results.tier.tier]}
+              </h3>
+              <p className="mt-1 text-sm text-slate-600">
+                Your details are already filled in — just pick a time that works.
+              </p>
+              <div className="mt-4">
+                <CalendarEmbed prominent={results.tier.tier === 1} src={bookingUrl} />
+              </div>
+            </div>
+          )}
 
-        {showCalendar && (
-          <div className="mt-4">
-            <CalendarEmbed prominent={results.tier.tier === 1} src={bookingUrl} />
-          </div>
-        )}
-
-        {!showCalendar && results.tier.tier === 3 && (
-          <div className="mt-4">
-            <a
-              href={CALENDAR_URL.startsWith("PASTE_") ? "#" : bookingUrl}
-              target="_blank"
-              rel="noreferrer"
-              className="inline-block rounded-xl border border-accent px-5 py-3 text-sm font-semibold text-accent transition hover:bg-accent/10"
-            >
-              Book a quick call when you're ready
-            </a>
-          </div>
-        )}
-
-        <div className="mt-4">
-          <button
-            type="button"
-            onClick={() => downloadReport(results, answers, contact)}
-            className="w-full rounded-xl bg-navy px-6 py-3.5 text-base font-semibold text-white transition hover:brightness-110 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
-          >
-            Download this summary
-          </button>
+          {!showCalendar && results.tier.tier === 3 && (
+            <div className="mt-6 border-t border-slate-100 pt-6">
+              <h3 className="text-base font-bold leading-snug text-navy">{TIER_CTA[3]}</h3>
+              <a
+                href={CALENDAR_URL.startsWith("PASTE_") ? "#" : bookingUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="mt-3 inline-block rounded-xl border border-accent px-5 py-3 text-sm font-semibold text-accent transition hover:bg-accent/10"
+              >
+                Book a quick call when you're ready
+              </a>
+            </div>
+          )}
         </div>
+      ) : (
+        <OptInCard
+          contact={contact}
+          setContact={setContact}
+          errors={errors}
+          onRequestReport={onRequestReport}
+          webhookStatus={webhookStatus}
+          showCalendar={showCalendar}
+        />
+      )}
+
+      <div className="rounded-2xl bg-white px-6 py-5 shadow-sm sm:px-8">
+        <button
+          type="button"
+          onClick={() => downloadReport(results, answers, contact)}
+          className="w-full rounded-xl border border-slate-200 px-6 py-3 text-sm font-semibold text-navy transition hover:border-accent/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+        >
+          Download this summary
+        </button>
       </div>
     </div>
   );
