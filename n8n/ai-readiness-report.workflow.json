@@ -12,7 +12,7 @@
       "name": "Intake Webhook",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2,
-      "position": [0, 300],
+      "position": [-220, 360],
       "webhookId": "a1000000-0000-0000-0000-000000000099"
     },
     {
@@ -25,7 +25,33 @@
       "name": "Respond 200",
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1.1,
-      "position": [240, 140]
+      "position": [0, 200]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "c0000000-0000-0000-0000-000000000001",
+              "leftValue": "={{ $json.body.optedIn }}",
+              "rightValue": "",
+              "operator": { "type": "boolean", "operation": "true", "singleValue": true }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "a1000000-0000-0000-0000-000000000007",
+      "name": "Opted In?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [0, 480]
     },
     {
       "parameters": {
@@ -35,7 +61,7 @@
       "name": "Prepare Claude Request",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [240, 460]
+      "position": [240, 360]
     },
     {
       "parameters": {
@@ -46,29 +72,21 @@
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
-            {
-              "name": "anthropic-version",
-              "value": "2023-06-01"
-            },
-            {
-              "name": "content-type",
-              "value": "application/json"
-            }
+            { "name": "anthropic-version", "value": "2023-06-01" },
+            { "name": "content-type", "value": "application/json" }
           ]
         },
         "sendBody": true,
         "contentType": "raw",
         "rawContentType": "application/json",
         "body": "={{ JSON.stringify($input.first().json.requestBody) }}",
-        "options": {
-          "timeout": 45000
-        }
+        "options": { "timeout": 45000 }
       },
       "id": "a1000000-0000-0000-0000-000000000004",
       "name": "Claude - Generate Report",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [480, 460],
+      "position": [460, 360],
       "credentials": {
         "httpHeaderAuth": {
           "id": "REPLACE_WITH_YOUR_CREDENTIAL_ID",
@@ -84,7 +102,7 @@
       "name": "Parse & Build Report",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [720, 460]
+      "position": [680, 360]
     },
     {
       "parameters": {
@@ -92,26 +110,28 @@
         "url": "PASTE_YOUR_GHL_INBOUND_WEBHOOK_URL_HERE",
         "sendHeaders": true,
         "headerParameters": {
-          "parameters": [
-            {
-              "name": "Content-Type",
-              "value": "application/json"
-            }
-          ]
+          "parameters": [{ "name": "Content-Type", "value": "application/json" }]
         },
         "sendBody": true,
         "contentType": "raw",
         "rawContentType": "application/json",
         "body": "={{ JSON.stringify($input.first().json) }}",
-        "options": {
-          "timeout": 15000
-        }
+        "options": { "timeout": 15000 }
       },
       "id": "a1000000-0000-0000-0000-000000000006",
       "name": "GHL - Push Enriched Lead",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [960, 460]
+      "position": [900, 360]
+    },
+    {
+      "parameters": {},
+      "id": "a1000000-0000-0000-0000-000000000008",
+      "name": "Store Anonymous Submission",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [240, 600],
+      "notes": "Anonymous completions (optedIn=false, no PII) land here for future data. Wire this to your store: a Google Sheets 'Append', a Postgres/MySQL insert, a Cloudflare D1 query, or an Airtable 'Create'. Useful columns: submissionId, submittedAt, domain, primaryTask, priorityScore, priorityBand, annualROI, temperature, readinessTier. The matching opt-in event (if any) shares the same submissionId."
     }
   ],
   "connections": {
@@ -119,34 +139,29 @@
       "main": [
         [
           { "node": "Respond 200", "type": "main", "index": 0 },
-          { "node": "Prepare Claude Request", "type": "main", "index": 0 }
+          { "node": "Opted In?", "type": "main", "index": 0 }
         ]
       ]
     },
-    "Prepare Claude Request": {
+    "Opted In?": {
       "main": [
-        [{ "node": "Claude - Generate Report", "type": "main", "index": 0 }]
+        [{ "node": "Prepare Claude Request", "type": "main", "index": 0 }],
+        [{ "node": "Store Anonymous Submission", "type": "main", "index": 0 }]
       ]
+    },
+    "Prepare Claude Request": {
+      "main": [[{ "node": "Claude - Generate Report", "type": "main", "index": 0 }]]
     },
     "Claude - Generate Report": {
-      "main": [
-        [{ "node": "Parse & Build Report", "type": "main", "index": 0 }]
-      ]
+      "main": [[{ "node": "Parse & Build Report", "type": "main", "index": 0 }]]
     },
     "Parse & Build Report": {
-      "main": [
-        [{ "node": "GHL - Push Enriched Lead", "type": "main", "index": 0 }]
-      ]
+      "main": [[{ "node": "GHL - Push Enriched Lead", "type": "main", "index": 0 }]]
     }
   },
   "active": false,
-  "settings": {
-    "executionOrder": "v1"
-  },
+  "settings": { "executionOrder": "v1" },
   "versionId": "a1000000-0000-0000-0000-000000000000",
-  "meta": {
-    "templateCredsSetupCompleted": false,
-    "instanceId": "local"
-  },
+  "meta": { "templateCredsSetupCompleted": false, "instanceId": "local" },
   "tags": [{ "name": "ai-readiness" }]
 }

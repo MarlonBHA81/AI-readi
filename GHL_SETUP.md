@@ -10,14 +10,20 @@ The assessment no longer posts to GHL directly. The browser posts to an **n8n
 webhook** instead. n8n responds immediately, runs the Claude report pipeline,
 and then forwards the enriched payload to GHL.
 
+**Only opted-in leads reach GHL.** The app fires two kinds of event to n8n: an
+anonymous "results viewed" event (no contact info, stored for data) and an
+opt-in "report requested" event (full contact info). n8n routes only the opt-in
+event to this GHL webhook, so every contact created here is someone who entered
+their email asking for the top-3 report.
+
 1. In your sub-account: **Automation > Workflows > Create Workflow > Start from
    scratch**.
 2. Add trigger: **Inbound Webhook**.
 3. Copy the webhook URL and paste it into the **GHL - Push Enriched Lead** node
    inside the n8n workflow (see `n8n/README.md`). Do not paste it into
    `src/App.jsx` — that constant now holds the n8n webhook URL instead.
-4. Submit one test assessment, then use GHL's "mapping reference" on the
-   trigger to map the payload fields below (original fields plus the five new
+4. Submit one test assessment and opt in, then use GHL's "mapping reference" on
+   the trigger to map the payload fields below (original fields plus the five new
    report fields).
 
 ## 2. Contact custom fields
@@ -76,6 +82,11 @@ Notes:
   available as `annualROI`. `weeklyROI`, `frequencyScore`, `frictionScore`,
   `triedBefore`, and `whoDoesIt` are in the payload too if you want extra
   fields for reporting.
+- Tracking fields also ride along: `submissionId` (links to the anonymous
+  "results viewed" record for the same session), `stage` (always
+  `report_requested` for leads that reach GHL), and `optedIn` (always `true`
+  here). Store `submissionId` in a text field if you want to join GHL contacts
+  back to your anonymous data store.
 
 ## 3. Routing workflow (branches by tier/temperature)
 

@@ -1,9 +1,26 @@
 # n8n Workflow Setup
 
 Import and configure the `ai-readiness-report.workflow.json` workflow to wire up
-the Claude report pipeline. Once running, every assessment submission is captured
-server-side instantly, then enriched with a ranked top-3 AI opportunity report
-(powered by Claude) and pushed to GoHighLevel.
+the Claude report pipeline. Once running, every assessment is captured
+server-side instantly. Opt-ins are enriched with a ranked top-3 AI opportunity
+report (powered by Claude) and pushed to GoHighLevel; anonymous completions are
+stored for aggregate data.
+
+## Two kinds of intake event
+
+The app posts to the same webhook twice over a session, distinguished by the
+`optedIn` flag and `stage` field:
+
+| Event | When it fires | `optedIn` | `stage` | Contains PII? | What n8n does |
+| --- | --- | --- | --- | --- | --- |
+| **Anonymous** | The instant the result screen is revealed (after Q12) | `false` | `results_viewed` | No | Routes to **Store Anonymous Submission** for future data |
+| **Opt-in** | When the prospect submits the email form for the top-3 | `true` | `report_requested` | Yes | Runs Claude → GHL → email |
+
+Both events share a per-session `submissionId`, so you can later reconcile how
+many people completed the assessment versus how many opted in.
+
+The **Opted In?** IF node does this routing: `optedIn === true` goes down the
+Claude/GHL path; `false` goes to the anonymous store.
 
 ## Why n8n instead of a direct browser-to-GHL POST
 
@@ -11,16 +28,18 @@ The previous approach posted from the browser directly to GHL. If the user
 closed the tab mid-retry, the lead was silently lost. n8n solves this:
 
 1. The browser POSTs to the n8n webhook and gets `{"ok":true}` back immediately.
-2. n8n captures the lead server-side and processes Claude async — no data loss
+2. n8n captures the data server-side and processes Claude async — no data loss
    even if the user's tab closes.
-3. The enriched payload (original fields + top-3 report) reaches GHL a few
-   seconds later, after Claude finishes.
+3. For opt-ins, the enriched payload (original fields + top-3 report) reaches GHL
+   a few seconds later, after Claude finishes.
+4. Anonymous completions are recorded too, so even non-converters become useful
+   aggregate data (completion rate, most common bottlenecks, ROI distribution).
 
 ## Import steps
 
 1. In your n8n instance: **Workflows > Import from file**.
 2. Select `n8n/ai-readiness-report.workflow.json`.
-3. Complete the four configuration steps below, then activate the workflow.
+3. Complete the five configuration steps below, then activate the workflow.
 
 ## Step 1 — Set the webhook URL in the app
 
@@ -72,14 +91,39 @@ to the new contact custom fields (see GHL_SETUP.md section 2 for the full list):
 | `assessment_report_headline` | `assessment_report_headline` | Text |
 | `assessment_report_summary` | `assessment_report_summary` | Text |
 
+## Step 5 — Wire up the anonymous data store
+
+The **Store Anonymous Submission** node is a placeholder (NoOp) on the `false`
+branch of **Opted In?**. Anonymous completions (no PII) flow here so you can
+measure completion rate and the most common bottlenecks. Replace it with the
+store of your choice:
+
+- **Google Sheets** → "Append row" (simplest to start)
+- **Postgres / MySQL** → "Insert"
+- **Cloudflare D1** → query node / HTTP request
+- **Airtable** → "Create record"
+
+Suggested columns: `submissionId`, `submittedAt`, `domain`, `primaryTask`,
+`priorityScore`, `priorityBand`, `annualROI`, `temperature`, `readinessTier`.
+The matching opt-in (if the prospect converts) shares the same `submissionId`,
+so you can join the two later. Until you wire this up, anonymous events are
+acknowledged (200) and simply not stored — the opt-in path is unaffected.
+
+If you would rather not collect anonymous data at all, delete the **Opted In?**
+and **Store Anonymous Submission** nodes and connect **Intake Webhook** straight
+to **Prepare Claude Request** (anonymous events have no email, so Claude/GHL
+would no-op harmlessly — but skipping them saves the Claude call).
+
 ## Activate and test
 
 1. Toggle the workflow to **Active**.
 2. Run a test assessment end-to-end. In n8n, open **Executions** and confirm:
-   - The workflow ran.
-   - The **Respond 200** node fired first (browser got the instant response).
-   - The **Claude - Generate Report** node returned a valid response.
-   - The **GHL - Push Enriched Lead** node returned a 2xx status.
+   - The workflow ran twice: once when results appear (anonymous, routed to
+     **Store Anonymous Submission**), once when you submit the email opt-in
+     (routed through **Claude → GHL**).
+   - The **Respond 200** node fired first on both (browser got the instant ack).
+   - On the opt-in run, **Claude - Generate Report** returned a valid response
+     and **GHL - Push Enriched Lead** returned a 2xx status.
 3. In GHL, verify the test contact was created with all fields populated,
    including `assessment_top_areas`.
 

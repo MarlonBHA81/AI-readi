@@ -323,16 +323,12 @@ export function computeResults(a) {
   };
 }
 
-// Full GHL webhook payload. annualROI is the rounded headline number so the
-// figure in the report email matches the result screen exactly.
-export function buildPayload(answers, contact, results, submittedAt) {
+// The assessment + scoring fields shared by both the anonymous and the opt-in
+// payloads (everything that is not personal contact info). annualROI is the
+// rounded headline number so the figure in the report email matches the result
+// screen exactly.
+function buildAssessmentFields(answers, results) {
   return {
-    firstName: contact.firstName.trim(),
-    lastName: contact.lastName.trim(),
-    email: contact.email.trim(),
-    phone: contact.phone.trim(),
-    businessName: contact.businessName.trim(),
-    industry: contact.industry.trim(),
     lever: answers.lever,
     domain: answers.domain,
     primaryTask: answers.task,
@@ -353,7 +349,39 @@ export function buildPayload(answers, contact, results, submittedAt) {
     toolRecommendation: results.tool.payloadLabel,
     deliveryPreference: answers.delivery,
     namedBottleneck: results.namedBottleneck,
+  };
+}
+
+// Anonymous intake: fired the moment the result screen is revealed, before any
+// opt-in. Carries no personal data — just the assessment answers and scores,
+// tagged with a per-session submissionId so a later opt-in can be linked back
+// to it. n8n stores these for aggregate analysis (completion rate, common
+// bottlenecks, ROI distribution) without ever holding PII for non-opt-ins.
+export function buildAnonymousPayload(answers, results, submittedAt, meta = {}) {
+  return {
+    ...buildAssessmentFields(answers, results),
     submittedAt,
+    optedIn: false,
+    stage: "results_viewed",
+    ...meta,
+  };
+}
+
+// Full intake: fired when the prospect opts in for the top-3 report. Adds the
+// contact fields on top of the assessment data and flags the lead as opted in.
+export function buildPayload(answers, contact, results, submittedAt, meta = {}) {
+  return {
+    firstName: contact.firstName.trim(),
+    lastName: contact.lastName.trim(),
+    email: contact.email.trim(),
+    phone: contact.phone.trim(),
+    businessName: contact.businessName.trim(),
+    industry: contact.industry.trim(),
+    ...buildAssessmentFields(answers, results),
+    submittedAt,
+    optedIn: true,
+    stage: "report_requested",
+    ...meta,
   };
 }
 
@@ -506,13 +534,20 @@ function CalendarEmbed({ prominent }) {
 
 /* ════════════════════════════════════════════════════════════════════════
    MAIN APP
-   Steps: 0 = intro, 1..12 = questions, 13 = contact, 14 = results.
+   Steps: 0 = intro, 1..12 = questions, 13 = results (with the email opt-in
+   for the full top-3 report living on the result screen itself).
    State lives in React only — no localStorage (sandboxed embeds).
    ════════════════════════════════════════════════════════════════════════ */
 
-const CONTACT_STEP = QUESTIONS.length + 1; // 13
-const RESULT_STEP = CONTACT_STEP + 1; // 14
+const RESULT_STEP = QUESTIONS.length + 1; // 13 — shown right after the last question
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+// Per-session id linking the anonymous "results viewed" event to a later
+// opt-in, so completions and conversions can be reconciled in the data store.
+function generateSubmissionId() {
+  if (typeof crypto !== "undefined" && crypto.randomUUID) return crypto.randomUUID();
+  return `sub_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+}
 
 export default function App() {
   const [step, setStep] = useState(0);
@@ -541,10 +576,14 @@ export default function App() {
     industry: "",
   });
   const [contactErrors, setContactErrors] = useState({});
-  // idle | sending | sent | failed (failed = all retries exhausted)
+  // Status of the OPT-IN POST only: idle | sending | sent | failed
+  // (failed = all retries exhausted). The anonymous POST is fire-and-forget.
   const [webhookStatus, setWebhookStatus] = useState("idle");
   const advanceTimer = useRef(null);
   const retryTimer = useRef(null);
+  const anonTimer = useRef(null);
+  const submissionId = useRef(null);
+  if (submissionId.current === null) submissionId.current = generateSubmissionId();
 
   const results = useMemo(
     () => (step === RESULT_STEP ? computeResults(answers) : null),
@@ -552,6 +591,9 @@ export default function App() {
   );
 
   // Report height to the parent page so a GHL iframe embed can auto-size.
+  // A ResizeObserver catches content growth within a step (e.g. the opt-in
+  // form expanding with validation errors or the confirmation message), not
+  // just step changes.
   useEffect(() => {
     const post = () => {
       if (window.parent !== window) {
@@ -563,13 +605,22 @@ export default function App() {
     };
     post();
     window.addEventListener("resize", post);
-    return () => window.removeEventListener("resize", post);
-  }, [step]);
+    let ro;
+    if (typeof ResizeObserver !== "undefined") {
+      ro = new ResizeObserver(post);
+      ro.observe(document.documentElement);
+    }
+    return () => {
+      window.removeEventListener("resize", post);
+      ro?.disconnect();
+    };
+  }, []);
 
   useEffect(
     () => () => {
       clearTimeout(advanceTimer.current);
       clearTimeout(retryTimer.current);
+      clearTimeout(anonTimer.current);
     },
     []
   );
@@ -580,7 +631,8 @@ export default function App() {
   }, []);
 
   // Single-select answers advance automatically after a brief confirmation
-  // beat; "Something else" on Q3 stays put so the optional text can be typed.
+  // beat; "Something else" on Q3 stays put so the optional text can be typed,
+  // and the final question stays put so the prospect taps "Show my results".
   const selectOption = useCallback((question, option) => {
     clearTimeout(advanceTimer.current);
     setAnswers((prev) => {
@@ -589,42 +641,25 @@ export default function App() {
       if (question.key === "task" && option.value !== "other") next.taskOther = "";
       return next;
     });
-    if (!(question.otherValue && option.value === question.otherValue)) {
+    const isOther = question.otherValue && option.value === question.otherValue;
+    const isLast = question.key === QUESTIONS[QUESTIONS.length - 1].key;
+    if (!isOther && !isLast) {
       advanceTimer.current = setTimeout(() => setStep((s) => s + 1), 220);
     }
   }, []);
 
-  const submitAll = useCallback(() => {
-    const errors = {};
-    if (!contact.firstName.trim()) errors.firstName = "We need a first name for your report.";
-    if (!EMAIL_RE.test(contact.email.trim())) errors.email = "Enter a valid email address.";
-    const phoneRequired = answers.delivery === "call" || answers.delivery === "whatsapp";
-    const phoneDigits = contact.phone.replace(/\D/g, "");
-    if (phoneRequired && phoneDigits.length < 7) {
-      errors.phone =
-        answers.delivery === "call"
-          ? "We need a phone number to confirm your call."
-          : "We need a number to send your assessment by WhatsApp or text.";
-    }
-    setContactErrors(errors);
-    if (Object.keys(errors).length > 0) return;
-
-    const computed = computeResults(answers);
-    const payload = buildPayload(answers, contact, computed, new Date().toISOString());
-    setStep(RESULT_STEP);
-    sendToGHL(payload);
-  }, [answers, contact]);
-
-  // POST to GHL on final submit. Failures never block the result screen:
-  // retries are queued in the background and the UI falls back to a calm
-  // "we'll email your results" message if every attempt fails.
-  const sendToGHL = useCallback((payload, attempt = 0) => {
+  // POST to the n8n intake webhook. keepalive lets the request finish even if
+  // the tab closes immediately. Failures retry in the background with backoff;
+  // onStatus is optional so the anonymous fire stays silent while the opt-in
+  // drives the visible "sending / sent / failed" state. timerRef keeps the two
+  // retry chains from clobbering each other.
+  const postIntake = useCallback((payload, { onStatus, timerRef, attempt = 0 } = {}) => {
     if (INTAKE_WEBHOOK_URL.startsWith("PASTE_")) {
       console.warn("INTAKE_WEBHOOK_URL is not configured; skipping webhook POST.", payload);
-      setWebhookStatus("sent");
+      onStatus?.("sent");
       return;
     }
-    setWebhookStatus("sending");
+    onStatus?.("sending");
     fetch(INTAKE_WEBHOOK_URL, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -633,19 +668,53 @@ export default function App() {
     })
       .then((res) => {
         if (!res.ok) throw new Error(`Webhook responded ${res.status}`);
-        setWebhookStatus("sent");
+        onStatus?.("sent");
       })
       .catch(() => {
         if (attempt < RETRY_DELAYS_MS.length) {
-          retryTimer.current = setTimeout(
-            () => sendToGHL(payload, attempt + 1),
+          const id = setTimeout(
+            () => postIntake(payload, { onStatus, timerRef, attempt: attempt + 1 }),
             RETRY_DELAYS_MS[attempt]
           );
+          if (timerRef) timerRef.current = id;
         } else {
-          setWebhookStatus("failed");
+          onStatus?.("failed");
         }
       });
   }, []);
+
+  // Reveal the instant top-1 result and capture an anonymous record of the
+  // completed assessment (no PII) for aggregate data, before any opt-in.
+  const showResults = useCallback(() => {
+    clearTimeout(advanceTimer.current);
+    const computed = computeResults(answers);
+    setStep(RESULT_STEP);
+    postIntake(
+      buildAnonymousPayload(answers, computed, new Date().toISOString(), {
+        submissionId: submissionId.current,
+      }),
+      { timerRef: anonTimer }
+    );
+  }, [answers, postIntake]);
+
+  // Opt-in: validate the contact fields, then POST the full payload (PII +
+  // assessment) so n8n runs Claude and emails the ranked top-3 report.
+  const requestReport = useCallback(() => {
+    const errors = {};
+    if (!contact.firstName.trim()) errors.firstName = "We need a first name for your report.";
+    if (!EMAIL_RE.test(contact.email.trim())) errors.email = "Enter a valid email address.";
+    if (contact.phone.replace(/\D/g, "").length < 7) {
+      errors.phone = "Enter a phone number so we can follow up.";
+    }
+    setContactErrors(errors);
+    if (Object.keys(errors).length > 0) return;
+
+    const computed = computeResults(answers);
+    const payload = buildPayload(answers, contact, computed, new Date().toISOString(), {
+      submissionId: submissionId.current,
+    });
+    postIntake(payload, { onStatus: setWebhookStatus, timerRef: retryTimer });
+  }, [answers, contact, postIntake]);
 
   /* ── screens ─────────────────────────────────────────────────────────── */
 
@@ -661,16 +730,8 @@ export default function App() {
         setAnswers={setAnswers}
         onSelect={selectOption}
         onNext={() => setStep((s) => s + 1)}
-      />
-    );
-  } else if (step === CONTACT_STEP) {
-    screen = (
-      <ContactScreen
-        contact={contact}
-        setContact={setContact}
-        errors={contactErrors}
-        delivery={answers.delivery}
-        onSubmit={submitAll}
+        isLast={step === QUESTIONS.length}
+        onShowResults={showResults}
       />
     );
   } else {
@@ -679,13 +740,16 @@ export default function App() {
         results={results}
         answers={answers}
         contact={contact}
+        setContact={setContact}
+        errors={contactErrors}
+        onRequestReport={requestReport}
         webhookStatus={webhookStatus}
       />
     );
   }
 
-  const inFlow = step >= 1 && step <= CONTACT_STEP;
-  const progress = inFlow ? ((step - 1) / CONTACT_STEP) * 100 : 0;
+  const inFlow = step >= 1 && step <= QUESTIONS.length;
+  const progress = inFlow ? (step / QUESTIONS.length) * 100 : 0;
 
   return (
     <div className="min-h-screen bg-mist px-4 py-6 sm:py-10">
@@ -700,11 +764,7 @@ export default function App() {
               >
                 Back
               </button>
-              <span>
-                {step <= QUESTIONS.length
-                  ? `Question ${step} of ${QUESTIONS.length}`
-                  : "Last step"}
-              </span>
+              <span>{`Question ${step} of ${QUESTIONS.length}`}</span>
             </div>
             <div
               className="h-1.5 w-full overflow-hidden rounded-full bg-slate-200"
@@ -756,7 +816,7 @@ function IntroScreen({ onStart }) {
   );
 }
 
-function QuestionScreen({ question, answers, setAnswers, onSelect, onNext }) {
+function QuestionScreen({ question, answers, setAnswers, onSelect, onNext, isLast, onShowResults }) {
   const selected = answers[question.key];
 
   if (question.type === "text") {
@@ -775,8 +835,8 @@ function QuestionScreen({ question, answers, setAnswers, onSelect, onNext }) {
           className="mt-4 w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-[15px] text-navy placeholder:text-slate-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
         />
         <div className="mt-5">
-          <PrimaryButton onClick={onNext} disabled={!valid}>
-            Next
+          <PrimaryButton onClick={isLast ? onShowResults : onNext} disabled={!valid}>
+            {isLast ? "Show my results" : "Next"}
           </PrimaryButton>
         </div>
       </div>
@@ -808,32 +868,62 @@ function QuestionScreen({ question, answers, setAnswers, onSelect, onNext }) {
             autoFocus
             className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-[15px] text-navy placeholder:text-slate-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
           />
-          <div className="mt-4">
-            <PrimaryButton onClick={onNext}>Next</PrimaryButton>
-          </div>
+          {!isLast && (
+            <div className="mt-4">
+              <PrimaryButton onClick={onNext}>Next</PrimaryButton>
+            </div>
+          )}
+        </div>
+      )}
+      {isLast && selected != null && (
+        <div className="mt-5">
+          <PrimaryButton onClick={onShowResults}>Show my results</PrimaryButton>
         </div>
       )}
     </div>
   );
 }
 
-function ContactScreen({ contact, setContact, errors, delivery, onSubmit }) {
-  const phoneRequired = delivery === "call" || delivery === "whatsapp";
+function OptInCard({ contact, setContact, errors, onRequestReport, webhookStatus }) {
   const set = (key) => (e) => setContact((p) => ({ ...p, [key]: e.target.value }));
+
+  if (webhookStatus === "sent") {
+    return (
+      <div className="rounded-2xl bg-white p-6 shadow-sm sm:p-8">
+        <p className="text-xs font-semibold uppercase tracking-wide text-accent">
+          You're all set
+        </p>
+        <h2 className="mt-1 text-lg font-bold leading-snug text-navy">
+          Your full report is on its way
+        </h2>
+        <p className="mt-2 text-[15px] leading-relaxed text-slate-600">
+          We're putting together your top 3 priority areas — ranked in order, with
+          the reasoning for each and the specific existing tools worth trying — and
+          sending it to {contact.email.trim()}. It usually lands within a few
+          minutes.
+        </p>
+      </div>
+    );
+  }
+
   return (
     <div className="rounded-2xl bg-white p-6 shadow-sm sm:p-8">
-      <h2 className="text-xl font-bold leading-snug text-navy">
-        Where should we send your assessment?
+      <p className="text-xs font-semibold uppercase tracking-wide text-accent">
+        Go deeper — free
+      </p>
+      <h2 className="mt-1 text-lg font-bold leading-snug text-navy">
+        Get your top 3 AI priorities, ranked
       </h2>
-      <p className="mt-2 text-sm text-slate-600">
-        Your personalized result appears on the next screen, and the full report
-        goes to your inbox.
+      <p className="mt-2 text-[15px] leading-relaxed text-slate-600">
+        Above is your single biggest bottleneck. Your full report ranks the top 3
+        areas to fix first, in order, with the reasoning for each and the specific
+        existing tools worth trying. We'll email it to you.
       </p>
       <form
         className="mt-5 space-y-4"
         onSubmit={(e) => {
           e.preventDefault();
-          onSubmit();
+          onRequestReport();
         }}
         noValidate
       >
@@ -853,12 +943,6 @@ function ContactScreen({ contact, setContact, errors, delivery, onSubmit }) {
           />
         </div>
         <TextField
-          label="Business name"
-          value={contact.businessName}
-          onChange={set("businessName")}
-          autoComplete="organization"
-        />
-        <TextField
           label="Email"
           type="email"
           value={contact.email}
@@ -868,7 +952,7 @@ function ContactScreen({ contact, setContact, errors, delivery, onSubmit }) {
           inputMode="email"
         />
         <TextField
-          label={phoneRequired ? "Phone" : "Phone (optional)"}
+          label="Phone"
           type="tel"
           value={contact.phone}
           onChange={set("phone")}
@@ -876,32 +960,41 @@ function ContactScreen({ contact, setContact, errors, delivery, onSubmit }) {
           autoComplete="tel"
           inputMode="tel"
         />
-        <TextField
-          label="Industry"
-          value={contact.industry}
-          onChange={set("industry")}
-          placeholder="e.g. trades, agency, e-commerce, professional services"
-        />
-        <PrimaryButton type="submit">See my results</PrimaryButton>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <TextField
+            label="Business name"
+            value={contact.businessName}
+            onChange={set("businessName")}
+            autoComplete="organization"
+          />
+          <TextField
+            label="Industry"
+            value={contact.industry}
+            onChange={set("industry")}
+            placeholder="e.g. trades, agency"
+          />
+        </div>
+        <PrimaryButton type="submit" disabled={webhookStatus === "sending"}>
+          {webhookStatus === "sending" ? "Sending..." : "Email me my top 3"}
+        </PrimaryButton>
+        {webhookStatus === "failed" && (
+          <p className="text-center text-xs text-red-600">
+            Something went wrong sending that. Please try again — your answers are
+            saved.
+          </p>
+        )}
         <p className="text-center text-xs text-slate-400">
-          We only use this to send your assessment. No spam.
+          We only use this to send your report. No spam.
         </p>
       </form>
     </div>
   );
 }
 
-function ResultScreen({ results, answers, contact, webhookStatus }) {
+function ResultScreen({ results, answers, contact, setContact, errors, onRequestReport, webhookStatus }) {
   if (!results) return null;
   const roi = formatCurrency(results.annualROI);
   const showCalendar = results.tier.tier <= 2 || answers.delivery === "call";
-
-  const deliveryLine =
-    webhookStatus === "failed"
-      ? `We're finalizing your report and will email your results to ${contact.email} shortly.`
-      : answers.delivery === "whatsapp"
-        ? `Your full report is on its way to ${contact.email}, with a copy by WhatsApp or text to ${contact.phone}.`
-        : `Your full report is on its way to ${contact.email}.`;
 
   return (
     <div className="space-y-4">
@@ -925,7 +1018,7 @@ function ResultScreen({ results, answers, contact, webhookStatus }) {
 
         <div className="mt-5">
           <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
-            The bottleneck
+            Your #1 bottleneck
           </h3>
           <p className="mt-1.5 text-[15px] leading-relaxed text-navy">
             {results.namedBottleneck}
@@ -948,6 +1041,14 @@ function ResultScreen({ results, answers, contact, webhookStatus }) {
           </p>
         </div>
       </div>
+
+      <OptInCard
+        contact={contact}
+        setContact={setContact}
+        errors={errors}
+        onRequestReport={onRequestReport}
+        webhookStatus={webhookStatus}
+      />
 
       <div className="rounded-2xl bg-white p-6 shadow-sm sm:p-8">
         <h2 className="text-lg font-bold leading-snug text-navy">
@@ -973,19 +1074,15 @@ function ResultScreen({ results, answers, contact, webhookStatus }) {
           </div>
         )}
 
-        {results.tier.tier >= 3 && (
-          <div className="mt-4">
-            <button
-              type="button"
-              onClick={() => downloadReport(results, answers, contact)}
-              className="w-full rounded-xl bg-navy px-6 py-3.5 text-base font-semibold text-white transition hover:brightness-110 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
-            >
-              Download your assessment
-            </button>
-          </div>
-        )}
-
-        <p className="mt-4 text-sm text-slate-500">{deliveryLine}</p>
+        <div className="mt-4">
+          <button
+            type="button"
+            onClick={() => downloadReport(results, answers, contact)}
+            className="w-full rounded-xl bg-navy px-6 py-3.5 text-base font-semibold text-white transition hover:brightness-110 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+          >
+            Download this summary
+          </button>
+        </div>
       </div>
     </div>
   );

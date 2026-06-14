@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildAnonymousPayload,
   buildNamedBottleneck,
   buildPayload,
   buildTaaftSearchUrl,
@@ -215,5 +216,67 @@ describe("GHL payload", () => {
       submittedAt: "2026-06-12T12:00:00.000Z",
     });
     expect(payload.namedBottleneck.length).toBeGreaterThan(40);
+  });
+
+  it("flags an opt-in payload and carries the submissionId meta", () => {
+    const contact = {
+      firstName: "Jane",
+      lastName: "Doe",
+      businessName: "Acme Plumbing",
+      email: "jane@acme.com",
+      phone: "+1 555 0100",
+      industry: "trades",
+    };
+    const results = computeResults(exampleAnswers);
+    const payload = buildPayload(exampleAnswers, contact, results, "2026-06-12T12:00:00.000Z", {
+      submissionId: "sub_123",
+    });
+    expect(payload.optedIn).toBe(true);
+    expect(payload.stage).toBe("report_requested");
+    expect(payload.submissionId).toBe("sub_123");
+  });
+});
+
+describe("anonymous payload (for future data)", () => {
+  it("carries the assessment + scores but no contact PII", () => {
+    const results = computeResults(exampleAnswers);
+    const payload = buildAnonymousPayload(exampleAnswers, results, "2026-06-12T12:00:00.000Z", {
+      submissionId: "sub_123",
+    });
+    // Assessment + scoring data is present.
+    expect(payload).toMatchObject({
+      domain: "operations",
+      primaryTask: "quotes",
+      priorityScore: 9,
+      priorityBand: "High",
+      annualROI: 42000,
+      readinessTier: "Tier 1 Emergency Fix",
+      optedIn: false,
+      stage: "results_viewed",
+      submissionId: "sub_123",
+    });
+    // No personal contact fields leak into the anonymous record.
+    expect(payload.firstName).toBeUndefined();
+    expect(payload.lastName).toBeUndefined();
+    expect(payload.email).toBeUndefined();
+    expect(payload.phone).toBeUndefined();
+    expect(payload.businessName).toBeUndefined();
+  });
+
+  it("links to a later opt-in via the shared submissionId", () => {
+    const contact = {
+      firstName: "Jane",
+      lastName: "Doe",
+      businessName: "Acme Plumbing",
+      email: "jane@acme.com",
+      phone: "+1 555 0100",
+      industry: "trades",
+    };
+    const results = computeResults(exampleAnswers);
+    const anon = buildAnonymousPayload(exampleAnswers, results, "t1", { submissionId: "sub_abc" });
+    const optIn = buildPayload(exampleAnswers, contact, results, "t2", { submissionId: "sub_abc" });
+    expect(anon.submissionId).toBe(optIn.submissionId);
+    expect(anon.optedIn).toBe(false);
+    expect(optIn.optedIn).toBe(true);
   });
 });

@@ -1,39 +1,64 @@
 # The 60-Second AI Readiness Check
 
 A self-serve, scored lead-qualification assessment. A business owner answers 12
-questions; the app scores them in real time, shows a personalized result with a
-dollar figure attached to their biggest bottleneck, and sends the payload to an
-n8n backend that captures the lead server-side, calls Claude to generate a
-ranked top-3 AI opportunity report, and routes the enriched contact into the
-right GoHighLevel (GHL) nurture or sales workflow.
+questions, then sees their single biggest bottleneck — with a dollar figure —
+instantly on screen. To get the full **ranked top-3 priority report** (generated
+by Claude, with real tool suggestions), they opt in with their email on the
+result screen. Every completed assessment is also captured anonymously for
+aggregate data, even when the prospect doesn't opt in.
+
+## User flow
+
+```
+Intro → 12 questions → "Show my results"
+                            │
+                            ▼
+                  RESULT SCREEN (instant, no gate)
+                   • headline + ROI dollar figure
+                   • #1 bottleneck (named)
+                   • magic-wand mirror + recommended direction
+                   • EMAIL OPT-IN  → "Email me my top 3"
+                   • calendar (hot leads) + summary download
+```
+
+The email is captured **on the result screen** as the exchange for the top-3
+report — after the prospect has already seen value, not before.
 
 ## Architecture
 
 ```
-Browser (instant, client-side)
-  │
-  │  POST  (keepalive:true)
-  ▼
-n8n Intake Webhook  ──►  200 OK  (lead captured server-side)
-  │
-  │  (async, ~3-10 s)
-  ▼
-Claude API (claude-sonnet-4-6)
-  │  Returns: top-3 focus areas ranked + reasoning + tool suggestions
-  ▼
-Parse & Build Report
-  │  Appends theresanaiforthat.com search URL per area
-  │  Builds GHL-ready text + HTML report fragments
-  ▼
-GHL Inbound Webhook
-  │  Creates/updates contact with all fields + report
-  ▼
-GHL Workflows (Tier 1–4 routing → email → CTA)
+                         Browser (instant, client-side)
+                              │
+            ┌─────────────────┴──────────────────┐
+            │ on results view                     │ on email opt-in
+            │ POST (anonymous, no PII)            │ POST (full contact)
+            │ optedIn:false                       │ optedIn:true
+            ▼                                     ▼
+                  n8n Intake Webhook  ──►  200 OK  (captured server-side)
+                              │
+                       ┌──────┴───────┐  "Opted In?"
+                       │ false        │ true
+                       ▼              ▼
+            Store Anonymous     Claude API (claude-sonnet-4-6)
+            Submission          │  top-3 areas ranked + why + tools
+            (data store)        ▼
+                                Parse & Build Report
+                                │  + theresanaiforthat.com URL per area
+                                │  + GHL-ready text + HTML fragments
+                                ▼
+                                GHL Inbound Webhook
+                                │  contact + report fields
+                                ▼
+                                GHL Workflows (Tier 1–4 → email → CTA)
 ```
 
+Both POSTs share a per-session `submissionId`, so anonymous completions and
+opt-ins can be reconciled (completion rate, conversion rate).
+
 **Why n8n?** The previous browser-to-GHL approach could silently lose leads if
-the user closed the tab mid-retry. n8n captures the submission the moment it
-arrives — before Claude even runs — so no lead is ever lost.
+the user closed the tab mid-retry. n8n captures every submission the moment it
+arrives — before Claude even runs — so nothing is ever lost (and `keepalive` on
+the fetch means even the anonymous POST survives an immediate tab close).
 
 **Why Claude?** The deterministic scoring engine (client-side) quantifies one
 bottleneck well but is coarse at prescribing. Claude ranks all 12 answers
@@ -105,9 +130,10 @@ cost/quality trade-offs.
 
 ## How scoring works
 
-All scoring runs client-side and renders instantly; the GHL POST fires once on
-final submit. Nothing is stored in localStorage — state lives in React only,
-so the app is safe in sandboxed embeds.
+All scoring runs client-side and renders instantly when the prospect taps "Show
+my results". An anonymous POST fires at that moment; the full POST fires when
+they opt in for the top-3. Nothing is stored in localStorage — state lives in
+React only, so the app is safe in sandboxed embeds.
 
 - **Priority score** = frequency (Q4, 1–4) × friction (Q8, 1–4), banded
   Low (1–4) / Moderate (5–8) / High (9–12) / Critical (13–16).
@@ -148,8 +174,15 @@ Decisions made where the build spec left room:
   support handled by the owner or a senior person counts as judgment-heavy
   (the spec's stated default for owner-handled email); junior/nobody-handled
   email and support route to off-the-shelf categories.
-- **First name is required** alongside email, because the GHL report email
-  personalizes its subject line with `{{contact.first_name}}`.
+- **The email opt-in lives on the result screen**, after the prospect has seen
+  their #1 bottleneck and ROI — value first, then the gated top-3 report. First
+  name, email, and phone are required (the report email personalizes its subject
+  with `{{contact.first_name}}`); last name, business name, and industry are
+  optional.
+- **Anonymous completions are captured for data.** The moment results appear,
+  the app POSTs the answers and scores (no PII) tagged `optedIn:false` with a
+  per-session `submissionId`. A later opt-in reuses the same id, so completion
+  and conversion rates can be reconciled in the data store.
 - **`annualROI` in the payload is the rounded headline number** so the figure
   in the report email always matches the result screen. The raw weekly figure
   is sent as `weeklyROI`, and a pre-formatted `annualROIFormatted` (for
