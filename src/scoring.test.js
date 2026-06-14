@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildAnonymousPayload,
+  buildBookingUrl,
   buildNamedBottleneck,
   buildPayload,
   buildTaaftSearchUrl,
@@ -166,6 +167,47 @@ describe("TAAFT search URL builder", () => {
   it("normalises case and trims whitespace", () => {
     expect(buildTaaftSearchUrl("  Invoice Automation  ")).toBe(
       "https://theresanaiforthat.com/s/invoice+automation/top-rated/"
+    );
+  });
+});
+
+describe("calendar booking prefill URL", () => {
+  const base = "https://link.example.com/widget/booking/abc";
+  const contact = {
+    firstName: "Jane",
+    lastName: "Doe",
+    email: "jane@acme.com",
+    phone: "+1 555 0100",
+  };
+
+  it("appends GHL prefill params from the contact", () => {
+    const url = buildBookingUrl(base, contact);
+    expect(url.startsWith(`${base}?`)).toBe(true);
+    expect(url).toContain("first_name=Jane");
+    expect(url).toContain("last_name=Doe");
+    expect(url).toContain("email=jane%40acme.com");
+    expect(url).toContain("phone=");
+  });
+
+  it("only includes fields that are present", () => {
+    const url = buildBookingUrl(base, { email: "solo@acme.com" });
+    expect(url).toBe(`${base}?email=solo%40acme.com`);
+  });
+
+  it("returns the base URL unchanged when there is nothing to prefill", () => {
+    expect(buildBookingUrl(base, {})).toBe(base);
+    expect(buildBookingUrl(base, { firstName: "  " })).toBe(base);
+  });
+
+  it("leaves an unconfigured placeholder alone", () => {
+    expect(buildBookingUrl("PASTE_YOUR_GHL_CALENDAR_LINK_HERE", contact)).toBe(
+      "PASTE_YOUR_GHL_CALENDAR_LINK_HERE"
+    );
+  });
+
+  it("uses & when the base already has a query string", () => {
+    expect(buildBookingUrl(`${base}?ref=ad`, { email: "x@y.com" })).toBe(
+      `${base}?ref=ad&email=x%40y.com`
     );
   });
 });

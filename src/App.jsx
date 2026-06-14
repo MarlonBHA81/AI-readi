@@ -7,7 +7,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 // n8n intake webhook URL — receives every submission instantly (lead captured
 // server-side), then calls Claude async and forwards the enriched payload to
 // GHL. See n8n/README.md for the importable workflow and setup steps.
-const INTAKE_WEBHOOK_URL = "PASTE_YOUR_N8N_WEBHOOK_URL_HERE";
+const INTAKE_WEBHOOK_URL = "https://n8n-n8n.jimchy.easypanel.host/webhook/ai-readiness";
 
 // GHL calendar booking link, embedded on the result screen for Tier 1/2
 // and whenever the prospect asks for a call. GHL's form_embed.js (loaded
@@ -392,6 +392,22 @@ export function buildTaaftSearchUrl(query) {
   return `https://theresanaiforthat.com/s/${query.trim().toLowerCase().replace(/\s+/g, "+")}/top-rated/`;
 }
 
+// Appends GHL calendar prefill params so a lead who already gave their details
+// in the opt-in form doesn't re-type them in the booking widget. GHL reads
+// first_name / last_name / email / phone from the query string. Returns the
+// base URL untouched when unconfigured or when there's nothing to prefill.
+export function buildBookingUrl(baseUrl, contact = {}) {
+  if (!baseUrl || baseUrl.startsWith("PASTE_")) return baseUrl;
+  const params = new URLSearchParams();
+  if (contact.firstName?.trim()) params.set("first_name", contact.firstName.trim());
+  if (contact.lastName?.trim()) params.set("last_name", contact.lastName.trim());
+  if (contact.email?.trim()) params.set("email", contact.email.trim());
+  if (contact.phone?.trim()) params.set("phone", contact.phone.trim());
+  const qs = params.toString();
+  if (!qs) return baseUrl;
+  return baseUrl + (baseUrl.includes("?") ? "&" : "?") + qs;
+}
+
 /* ════════════════════════════════════════════════════════════════════════
    PROSPECT-FACING RESULT COPY
    ════════════════════════════════════════════════════════════════════════ */
@@ -512,8 +528,9 @@ function TextField({ label, error, ...props }) {
   );
 }
 
-function CalendarEmbed({ prominent }) {
+function CalendarEmbed({ prominent, src }) {
   const configured = !CALENDAR_URL.startsWith("PASTE_");
+  const bookingSrc = src || CALENDAR_URL;
 
   // Load GHL's form_embed.js once (from the booking link's own domain). It
   // listens for the booking widget's height messages and resizes the iframe;
@@ -544,7 +561,7 @@ function CalendarEmbed({ prominent }) {
   return (
     <div className={`overflow-hidden rounded-xl border border-slate-200 bg-white ${prominent ? "" : "opacity-95"}`}>
       <iframe
-        src={CALENDAR_URL}
+        src={bookingSrc}
         title="Book a 15-minute call"
         scrolling="no"
         className="h-[640px] w-full border-0"
@@ -1017,6 +1034,14 @@ function ResultScreen({ results, answers, contact, setContact, errors, onRequest
   const roi = formatCurrency(results.annualROI);
   const showCalendar = results.tier.tier <= 2 || answers.delivery === "call";
 
+  // Prefill the booking widget only once the lead has submitted the opt-in
+  // (status leaves "idle"), so the iframe src is stable while they type and
+  // changes exactly once — to the prefilled URL — when their details are set.
+  const bookingUrl = useMemo(
+    () => (webhookStatus === "idle" ? CALENDAR_URL : buildBookingUrl(CALENDAR_URL, contact)),
+    [webhookStatus, contact]
+  );
+
   return (
     <div className="space-y-4">
       <div className="rounded-2xl bg-white p-6 shadow-sm sm:p-8">
@@ -1078,14 +1103,14 @@ function ResultScreen({ results, answers, contact, setContact, errors, onRequest
 
         {showCalendar && (
           <div className="mt-4">
-            <CalendarEmbed prominent={results.tier.tier === 1} />
+            <CalendarEmbed prominent={results.tier.tier === 1} src={bookingUrl} />
           </div>
         )}
 
         {!showCalendar && results.tier.tier === 3 && (
           <div className="mt-4">
             <a
-              href={CALENDAR_URL.startsWith("PASTE_") ? "#" : CALENDAR_URL}
+              href={CALENDAR_URL.startsWith("PASTE_") ? "#" : bookingUrl}
               target="_blank"
               rel="noreferrer"
               className="inline-block rounded-xl border border-accent px-5 py-3 text-sm font-semibold text-accent transition hover:bg-accent/10"
