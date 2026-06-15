@@ -5,11 +5,14 @@ import {
   buildNamedBottleneck,
   buildPayload,
   buildTaaftSearchUrl,
+  ceil500,
   computeResults,
+  floor500,
   formatCurrency,
   priorityBandFor,
   recommendTool,
   resolveTier,
+  roiRangeFor,
   roundToNearest500,
 } from "./App.jsx";
 
@@ -61,6 +64,27 @@ describe("ROI anchor", () => {
 
   it("formats as whole-dollar US currency", () => {
     expect(formatCurrency(42000)).toBe("$42,000");
+  });
+});
+
+describe("ROI range", () => {
+  it("brackets the point estimate using the bucket edges (worked example)", () => {
+    const r = computeResults(exampleAnswers); // hoursMid 7.5, rate 112
+    expect(r.annualROILow).toBe(18500); // floor500(5 x 75 x 50 = 18750)
+    expect(r.annualROIHigh).toBe(75000); // ceil500(10 x 150 x 50 = 75000)
+    expect(r.annualROI).toBe(42000); // point estimate unchanged
+    expect(r.annualROILow).toBeLessThanOrEqual(r.annualROI);
+    expect(r.annualROIHigh).toBeGreaterThanOrEqual(r.annualROI);
+  });
+
+  it("computes range bounds for the smallest and largest buckets", () => {
+    expect(roiRangeFor(1, 15)).toEqual({ annualROILow: 500, annualROIHigh: 2500 });
+    expect(roiRangeFor(12, 175)).toEqual({ annualROILow: 75000, annualROIHigh: 187500 });
+  });
+
+  it("rounds the low bound down and the high bound up to the nearest 500", () => {
+    expect(floor500(18750)).toBe(18500);
+    expect(ceil500(18750)).toBe(19000);
   });
 });
 

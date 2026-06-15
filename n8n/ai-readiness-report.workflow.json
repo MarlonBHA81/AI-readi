@@ -12,7 +12,10 @@
       "name": "Intake Webhook",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2,
-      "position": [-220, 360],
+      "position": [
+        -220,
+        360
+      ],
       "webhookId": "a1000000-0000-0000-0000-000000000099"
     },
     {
@@ -25,7 +28,10 @@
       "name": "Respond 200",
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1.1,
-      "position": [0, 200]
+      "position": [
+        0,
+        200
+      ]
     },
     {
       "parameters": {
@@ -40,7 +46,11 @@
               "id": "c0000000-0000-0000-0000-000000000001",
               "leftValue": "={{ $json.body.optedIn }}",
               "rightValue": "",
-              "operator": { "type": "boolean", "operation": "true", "singleValue": true }
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
             }
           ],
           "combinator": "and"
@@ -51,17 +61,23 @@
       "name": "Opted In?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
-      "position": [0, 480]
+      "position": [
+        0,
+        480
+      ]
     },
     {
       "parameters": {
-        "jsCode": "// Builds the Anthropic Messages API request object.\n// System prompt source of truth: prompts/diagnosis-system-prompt.md\n// When you update that file, paste the updated system prompt string below.\n\nconst SYSTEM_PROMPT = `You are an AI implementation advisor helping small-business owners understand where AI can help most.\n\nGiven a completed AI readiness assessment (12 questions answered), identify the top 3 focus areas where AI can deliver measurable business impact, ranked from highest to lowest priority.\n\nRanking signals to weigh together:\n- Q2 domain (which part of the business feels most stuck) is the primary anchor for rank 1\n- Q1 lever (what the owner wants most: revenue, time, quality, or all three) shapes how you frame the value\n- Priority score = freq (Q4) x friction (Q8), range 1-16; higher means more urgent\n- Annual ROI estimate = hoursMid x rate x 50; larger means more dollars at stake\n- Q3 primary task and Q10 magicWand reveal the specific daily pain in the owner's own words\n- Q5 who does the task signals whether the fix saves owner time or team capacity\n- Ranks 2 and 3 are the next highest-leverage areas inferred from the above signals combined\n\nOutput rules:\n- Use the prospect's own words from magicWand and taskOther where natural in the \"why\" field\n- Frame ROI as \"roughly\" or \"up to\" - never as a guarantee or an exact projection\n- No exclamation marks anywhere in the output\n- No hype words: amazing, incredible, revolutionary, game-changing, transformative\n- Suggest only real, existing AI tools - only name tools you are confident exist and are actively used as of 2024-2025\n- candidateTools: 2-3 specific product names per area (e.g. \"Fireflies.ai\", \"Copy.ai\", \"Zapier\")\n- taaftQuery: 2-4 words, suitable for searching theresanaiforthat.com (e.g. \"proposal generation\", \"meeting notes\", \"email follow-up\")\n- Keep each \"why\" to 2-3 sentences, specific to this business - not generic AI advice\n\nReturn ONLY valid JSON - no markdown fences, no preamble, no trailing text - in exactly this shape:\n\n{\n  \"topAreas\": [\n    {\n      \"rank\": 1,\n      \"area\": \"Short area label (3-6 words)\",\n      \"why\": \"2-3 sentences specific to this prospect's situation.\",\n      \"taaftQuery\": \"2-4 word query\",\n      \"candidateTools\": [\"Tool A\", \"Tool B\", \"Tool C\"]\n    },\n    { \"rank\": 2, \"area\": \"...\", \"why\": \"...\", \"taaftQuery\": \"...\", \"candidateTools\": [\"...\", \"...\"] },\n    { \"rank\": 3, \"area\": \"...\", \"why\": \"...\", \"taaftQuery\": \"...\", \"candidateTools\": [\"...\", \"...\"] }\n  ],\n  \"headline\": \"One-sentence personalized finding, 20-40 words, no exclamation mark.\",\n  \"summary\": \"2-3 sentences synthesizing the overall pattern. Plain language. No hype.\"\n}`;\n\nconst body = $input.first().json.body;\n\nconst userMessage =\n  'Here is the completed AI readiness assessment. Based on all 12 answers, identify the top 3 focus areas where AI can deliver measurable impact.\\n\\nAssessment data:\\n' +\n  JSON.stringify(body, null, 2) +\n  '\\n\\nReturn only the JSON output as specified.';\n\nreturn [\n  {\n    json: {\n      requestBody: {\n        model: 'claude-sonnet-4-6',\n        max_tokens: 2048,\n        system: SYSTEM_PROMPT,\n        messages: [{ role: 'user', content: userMessage }]\n      }\n    }\n  }\n];"
+        "jsCode": "// Source of truth for the \"Prepare Claude Request\" Code node.\n// SYSTEM_PROMPT is injected at build time from prompts/diagnosis-system-prompt.md\n// by scripts/build-workflow.cjs — edit the prompt there, not the placeholder below.\n\nconst SYSTEM_PROMPT = \"You are an AI implementation advisor helping small-business owners understand where AI can help most.\\n\\nGiven a completed AI readiness assessment (12 questions answered), identify the top 3 focus areas where AI can deliver measurable business impact, ranked from highest to lowest priority, and turn each into a clear decision the owner can act on.\\n\\nRanking signals to weigh together:\\n- Q2 domain (which part of the business feels most stuck) is the primary anchor for rank 1\\n- Q1 lever (what the owner wants most: revenue, time, quality, or all three) shapes how you frame the value\\n- Priority score = freq (Q4) × friction (Q8), range 1–16; higher means more urgent\\n- Annual ROI (annualROI) values reclaimed time (hours × rate × 50); larger means more dollars at stake. annualROILow/annualROIHigh give the honest range — keep figures directional\\n- Q3 primary task and Q10 magicWand reveal the specific daily pain in the owner's own words\\n- Q5 whoDoesIt signals whether the fix saves owner time or frees team capacity\\n- Q9 triedBefore tells you what they already attempted (a tool that didn't stick, a hire that was too expensive, a patch) — acknowledge it so advice does not repeat what already failed\\n- toolRecommendation is the assessment's own build-vs-buy call for the primary task (Custom Claude skill / Claude Cowork / an off-the-shelf category) — keep each area's \\\"approach\\\" consistent with it\\n- temperature (hot/warm/cool/cold) sets the pace of the roadmap — hot gets a more decisive first move, cool/cold a gentler ramp\\n- namedBottleneck is the one-line summary already shown on screen — stay consistent with it\\n- Ranks 2 and 3 are the next highest-leverage areas inferred from these signals combined\\n\\nMake each area decision-grade: what it is, why it matters here, how big and how hard, what success looks like, whether to buy or build, and the one thing still worth a conversation.\\n\\nOutput rules:\\n- Use the prospect's own words from magicWand and taskOther where natural in the \\\"why\\\" field\\n- Frame ROI and outcomes as \\\"roughly\\\" or \\\"up to\\\" — never a guarantee or an exact projection\\n- No exclamation marks anywhere in the output\\n- No hype words: amazing, incredible, revolutionary, game-changing, transformative\\n- Suggest only real, existing AI tools — only name tools you are confident exist and are actively used as of 2024–2025\\n- candidateTools: 2–3 specific product names per area (e.g. \\\"Fireflies.ai\\\", \\\"Copy.ai\\\", \\\"Zapier\\\")\\n- taaftQuery: 2–4 words, suitable for searching theresanaiforthat.com (e.g. \\\"proposal generation\\\", \\\"meeting notes\\\", \\\"email follow-up\\\")\\n- impact: exactly one of \\\"High\\\", \\\"Medium\\\", \\\"Low\\\" (business impact of fixing this area)\\n- effort: exactly one of \\\"Quick win\\\", \\\"Project\\\", \\\"Heavier build\\\" (how much work to stand it up)\\n- approach: exactly one of \\\"off-the-shelf\\\", \\\"configure-existing\\\", \\\"custom-build\\\" — consistent with toolRecommendation for the primary area\\n- roughInvestment: a coarse band only — \\\"$\\\", \\\"$\\\", or \\\"$$\\\" — never a quote or specific figure\\n- expectedOutcome: one directional sentence on what changes (e.g. \\\"could give back roughly half a day a week\\\")\\n- openQuestion: one business-specific question that determines the exact build and is deliberately left for the call — do not answer it in the report\\n- roadmap: sequence the three areas across now / next / later (think 30 / 60 / 90 days), one sentence each, paced by temperature\\n- Keep each \\\"why\\\" to 2–3 sentences, specific to this business's situation — not generic AI advice\\n- Do not give step-by-step build instructions; the exact implementation is reserved for the call\\n\\nReturn ONLY valid JSON — no markdown fences, no preamble, no trailing text — in exactly this shape:\\n\\n{\\n  \\\"topAreas\\\": [\\n    {\\n      \\\"rank\\\": 1,\\n      \\\"area\\\": \\\"Short area label (3–6 words)\\\",\\n      \\\"why\\\": \\\"2–3 sentences specific to this prospect, using their own words where possible; acknowledge what they already tried if relevant.\\\",\\n      \\\"impact\\\": \\\"High\\\",\\n      \\\"effort\\\": \\\"Quick win\\\",\\n      \\\"expectedOutcome\\\": \\\"One directional sentence on what changes.\\\",\\n      \\\"approach\\\": \\\"off-the-shelf\\\",\\n      \\\"roughInvestment\\\": \\\"$\\\",\\n      \\\"taaftQuery\\\": \\\"2-4 word query\\\",\\n      \\\"candidateTools\\\": [\\\"Tool A\\\", \\\"Tool B\\\", \\\"Tool C\\\"],\\n      \\\"openQuestion\\\": \\\"The one decision worth a conversation.\\\"\\n    },\\n    {\\n      \\\"rank\\\": 2,\\n      \\\"area\\\": \\\"...\\\",\\n      \\\"why\\\": \\\"...\\\",\\n      \\\"impact\\\": \\\"...\\\",\\n      \\\"effort\\\": \\\"...\\\",\\n      \\\"expectedOutcome\\\": \\\"...\\\",\\n      \\\"approach\\\": \\\"...\\\",\\n      \\\"roughInvestment\\\": \\\"...\\\",\\n      \\\"taaftQuery\\\": \\\"...\\\",\\n      \\\"candidateTools\\\": [\\\"...\\\", \\\"...\\\"],\\n      \\\"openQuestion\\\": \\\"...\\\"\\n    },\\n    {\\n      \\\"rank\\\": 3,\\n      \\\"area\\\": \\\"...\\\",\\n      \\\"why\\\": \\\"...\\\",\\n      \\\"impact\\\": \\\"...\\\",\\n      \\\"effort\\\": \\\"...\\\",\\n      \\\"expectedOutcome\\\": \\\"...\\\",\\n      \\\"approach\\\": \\\"...\\\",\\n      \\\"roughInvestment\\\": \\\"...\\\",\\n      \\\"taaftQuery\\\": \\\"...\\\",\\n      \\\"candidateTools\\\": [\\\"...\\\", \\\"...\\\"],\\n      \\\"openQuestion\\\": \\\"...\\\"\\n    }\\n  ],\\n  \\\"roadmap\\\": {\\n    \\\"now\\\": \\\"What to tackle first and why (this month).\\\",\\n    \\\"next\\\": \\\"What follows once the first is moving.\\\",\\n    \\\"later\\\": \\\"The third phase, when there is capacity.\\\"\\n  },\\n  \\\"headline\\\": \\\"One-sentence personalized finding, 20–40 words, no exclamation mark.\\\",\\n  \\\"summary\\\": \\\"2–3 sentences synthesizing the overall pattern. Plain language. No hype.\\\"\\n}\";\n\nconst body = $input.first().json.body;\n\nconst userMessage =\n  'Here is the completed AI readiness assessment. Based on all 12 answers, identify the top 3 focus areas where AI can deliver measurable impact.\\n\\nAssessment data:\\n' +\n  JSON.stringify(body, null, 2) +\n  '\\n\\nReturn only the JSON output as specified.';\n\nreturn [\n  {\n    json: {\n      requestBody: {\n        model: 'claude-sonnet-4-6',\n        max_tokens: 4096,\n        system: SYSTEM_PROMPT,\n        messages: [{ role: 'user', content: userMessage }]\n      }\n    }\n  }\n];\n"
       },
       "id": "a1000000-0000-0000-0000-000000000003",
       "name": "Prepare Claude Request",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [240, 360]
+      "position": [
+        240,
+        360
+      ]
     },
     {
       "parameters": {
@@ -72,21 +88,32 @@
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
-            { "name": "anthropic-version", "value": "2023-06-01" },
-            { "name": "content-type", "value": "application/json" }
+            {
+              "name": "anthropic-version",
+              "value": "2023-06-01"
+            },
+            {
+              "name": "content-type",
+              "value": "application/json"
+            }
           ]
         },
         "sendBody": true,
         "contentType": "raw",
         "rawContentType": "application/json",
         "body": "={{ JSON.stringify($input.first().json.requestBody) }}",
-        "options": { "timeout": 45000 }
+        "options": {
+          "timeout": 45000
+        }
       },
       "id": "a1000000-0000-0000-0000-000000000004",
       "name": "Claude - Generate Report",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [460, 360],
+      "position": [
+        460,
+        360
+      ],
       "credentials": {
         "httpHeaderAuth": {
           "id": "REPLACE_WITH_YOUR_CREDENTIAL_ID",
@@ -96,13 +123,16 @@
     },
     {
       "parameters": {
-        "jsCode": "// Parses Claude's response, builds TAAFT search URLs, assembles the\n// enriched GHL payload (original fields + Claude-added report fields).\n\nconst claudeResponse = $input.first().json;\nconst webhookBody = $('Intake Webhook').first().json.body;\n\n// --- 1. Extract Claude's JSON ---\nlet diagnosis = null;\ntry {\n  const content = claudeResponse.content && claudeResponse.content[0];\n  if (content && content.type === 'text') {\n    const jsonMatch = content.text.match(/\\{[\\s\\S]*\\}/);\n    if (jsonMatch) diagnosis = JSON.parse(jsonMatch[0]);\n  }\n} catch (e) {\n  // Claude response parse failed; continue with null diagnosis (fallback fields will be empty)\n}\n\n// --- 2. Build TAAFT search URLs (same encoding as buildTaaftSearchUrl in App.jsx) ---\nfunction taaftUrl(query) {\n  return 'https://theresanaiforthat.com/s/' +\n    String(query || '').trim().toLowerCase().replace(/\\s+/g, '+') +\n    '/top-rated/';\n}\n\nconst topAreas = ((diagnosis && diagnosis.topAreas) || []).map(function(area) {\n  return Object.assign({}, area, { taaftUrl: taaftUrl(area.taaftQuery || area.area) });\n});\n\n// --- 3. Plain-text summary for GHL custom field ---\nconst topAreasText = topAreas.map(function(a) {\n  return '#' + a.rank + '. ' + a.area + '\\n' +\n    a.why + '\\n' +\n    'Tools: ' + (a.candidateTools || []).join(', ') + '\\n' +\n    'Browse: ' + a.taaftUrl;\n}).join('\\n\\n');\n\n// --- 4. HTML report fragment for email embedding ---\nfunction esc(s) {\n  return String(s || '')\n    .replace(/&/g, '&amp;')\n    .replace(/</g, '&lt;')\n    .replace(/>/g, '&gt;');\n}\n\nconst areasHtml = topAreas.map(function(a) {\n  return '<h3>' + esc(a.rank) + '. ' + esc(a.area) + '</h3>' +\n    '<p>' + esc(a.why) + '</p>' +\n    '<p><strong>Tools to explore:</strong> ' + esc((a.candidateTools || []).join(', ')) + '</p>' +\n    '<p><a href=\"' + esc(a.taaftUrl) + '\">Browse top-rated tools for ' + esc(a.area) + ' &rarr;</a></p>';\n}).join('');\n\nconst roiFormatted = '$' + Number(webhookBody.annualROI || 0).toLocaleString();\n\nconst reportHtml =\n  '<h2>' + esc((diagnosis && diagnosis.headline) || 'Your AI Readiness Report') + '</h2>' +\n  '<p>' + esc((diagnosis && diagnosis.summary) || '') + '</p>' +\n  areasHtml +\n  '<hr>' +\n  '<p><em>ROI estimate: roughly ' + roiFormatted + '/year in reclaimed time. ' +\n  'Treat as directional, not a guarantee.</em></p>';\n\n// --- 5. Return enriched payload (original fields + new report fields) ---\nreturn [\n  {\n    json: Object.assign({}, webhookBody, {\n      assessment_top_areas: topAreasText,\n      assessment_tool_suggestions: topAreas.map(function(a) {\n        return a.area + ': ' + (a.candidateTools || []).join(', ');\n      }).join('\\n'),\n      assessment_report_html: reportHtml,\n      assessment_report_headline: (diagnosis && diagnosis.headline) || '',\n      assessment_report_summary: (diagnosis && diagnosis.summary) || ''\n    })\n  }\n];"
+        "jsCode": "// Source of truth for the \"Parse & Build Report\" Code node.\n// Parses Claude's JSON, builds TAAFT URLs, and assembles the enriched GHL\n// payload (original fields + decision-grade report fields). Every new field is\n// guarded, so an older or partial Claude response still renders.\n\nconst claudeResponse = $input.first().json;\nconst webhookBody = $('Intake Webhook').first().json.body;\n\n// --- 1. Extract Claude's JSON ---\nlet diagnosis = null;\ntry {\n  const content = claudeResponse.content && claudeResponse.content[0];\n  if (content && content.type === 'text') {\n    const jsonMatch = content.text.match(/\\{[\\s\\S]*\\}/);\n    if (jsonMatch) diagnosis = JSON.parse(jsonMatch[0]);\n  }\n} catch (e) {\n  // Parse failed; continue with null diagnosis (report fields fall back to empty).\n}\n\n// --- 2. TAAFT search URL per area (same encoding as buildTaaftSearchUrl) ---\nfunction taaftUrl(query) {\n  return 'https://theresanaiforthat.com/s/' +\n    String(query || '').trim().toLowerCase().replace(/\\s+/g, '+') +\n    '/top-rated/';\n}\n\nconst topAreas = ((diagnosis && diagnosis.topAreas) || []).map(function (area) {\n  return Object.assign({}, area, { taaftUrl: taaftUrl(area.taaftQuery || area.area) });\n});\n\n// --- 3. Plain-text block for the GHL custom field ---\nfunction metaLine(a) {\n  const bits = [];\n  if (a.impact) bits.push('Impact: ' + a.impact);\n  if (a.effort) bits.push('Effort: ' + a.effort);\n  if (a.approach) bits.push('Approach: ' + a.approach + (a.roughInvestment ? ' (' + a.roughInvestment + ')' : ''));\n  return bits.join('  |  ');\n}\n\nconst topAreasText = topAreas.map(function (a) {\n  const lines = ['#' + a.rank + '. ' + a.area];\n  const meta = metaLine(a);\n  if (meta) lines.push(meta);\n  lines.push(a.why || '');\n  if (a.expectedOutcome) lines.push('Expected outcome: ' + a.expectedOutcome);\n  lines.push('Tools: ' + (a.candidateTools || []).join(', '));\n  lines.push('Browse: ' + a.taaftUrl);\n  if (a.openQuestion) lines.push('Worth a conversation: ' + a.openQuestion);\n  return lines.join('\\n');\n}).join('\\n\\n');\n\n// --- 4. HTML report fragment for the email ---\nfunction esc(s) {\n  return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');\n}\n\nfunction badgeHtml(a) {\n  const tags = [];\n  if (a.impact) tags.push('Impact: ' + esc(a.impact));\n  if (a.effort) tags.push('Effort: ' + esc(a.effort));\n  if (a.approach) tags.push(esc(a.approach) + (a.roughInvestment ? ' (' + esc(a.roughInvestment) + ')' : ''));\n  return tags.length ? '<p style=\"color:#5a6b7d;font-size:13px;margin:4px 0\">' + tags.join(' &middot; ') + '</p>' : '';\n}\n\nconst areasHtml = topAreas.map(function (a) {\n  return '<h3>' + esc(a.rank) + '. ' + esc(a.area) + '</h3>' +\n    badgeHtml(a) +\n    '<p>' + esc(a.why) + '</p>' +\n    (a.expectedOutcome ? '<p><strong>Expected outcome:</strong> ' + esc(a.expectedOutcome) + '</p>' : '') +\n    '<p><strong>Tools to explore:</strong> ' + esc((a.candidateTools || []).join(', ')) + '</p>' +\n    '<p><a href=\"' + esc(a.taaftUrl) + '\">Browse top-rated tools for ' + esc(a.area) + ' &rarr;</a></p>' +\n    (a.openQuestion ? '<p style=\"color:#33475b\"><em>Worth a conversation: ' + esc(a.openQuestion) + '</em></p>' : '');\n}).join('');\n\nconst roadmap = (diagnosis && diagnosis.roadmap) || null;\nconst roadmapHtml = roadmap\n  ? '<h3>Suggested sequence</h3><ol>' +\n    (roadmap.now ? '<li><strong>Now:</strong> ' + esc(roadmap.now) + '</li>' : '') +\n    (roadmap.next ? '<li><strong>Next:</strong> ' + esc(roadmap.next) + '</li>' : '') +\n    (roadmap.later ? '<li><strong>Later:</strong> ' + esc(roadmap.later) + '</li>' : '') +\n    '</ol>'\n  : '';\n\nconst roiFormatted = '$' + Number(webhookBody.annualROI || 0).toLocaleString();\nconst roiRange = webhookBody.annualROIRangeFormatted || '';\n\nconst reportHtml =\n  '<h2>' + esc((diagnosis && diagnosis.headline) || 'Your AI Readiness Report') + '</h2>' +\n  '<p>' + esc((diagnosis && diagnosis.summary) || '') + '</p>' +\n  areasHtml +\n  roadmapHtml +\n  '<hr>' +\n  '<p><em>ROI estimate: roughly ' + roiFormatted + '/year' +\n  (roiRange ? ' (about ' + esc(roiRange) + ')' : '') +\n  ' in reclaimed-time value. Treat as directional, not a guarantee; it does not assume new revenue.</em></p>';\n\n// --- 5. Enriched payload (original fields + report fields) ---\nconst roadmapText = roadmap\n  ? ['Now: ' + (roadmap.now || ''), 'Next: ' + (roadmap.next || ''), 'Later: ' + (roadmap.later || '')].join('\\n')\n  : '';\n\nreturn [\n  {\n    json: Object.assign({}, webhookBody, {\n      assessment_top_areas: topAreasText,\n      assessment_tool_suggestions: topAreas.map(function (a) {\n        return a.area + ': ' + (a.candidateTools || []).join(', ');\n      }).join('\\n'),\n      assessment_roadmap: roadmapText,\n      assessment_report_html: reportHtml,\n      assessment_report_headline: (diagnosis && diagnosis.headline) || '',\n      assessment_report_summary: (diagnosis && diagnosis.summary) || ''\n    })\n  }\n];\n"
       },
       "id": "a1000000-0000-0000-0000-000000000005",
       "name": "Parse & Build Report",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [680, 360]
+      "position": [
+        680,
+        360
+      ]
     },
     {
       "parameters": {
@@ -110,19 +140,29 @@
         "url": "PASTE_YOUR_GHL_INBOUND_WEBHOOK_URL_HERE",
         "sendHeaders": true,
         "headerParameters": {
-          "parameters": [{ "name": "Content-Type", "value": "application/json" }]
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
         },
         "sendBody": true,
         "contentType": "raw",
         "rawContentType": "application/json",
         "body": "={{ JSON.stringify($input.first().json) }}",
-        "options": { "timeout": 15000 }
+        "options": {
+          "timeout": 15000
+        }
       },
       "id": "a1000000-0000-0000-0000-000000000006",
       "name": "GHL - Push Enriched Lead",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [900, 360]
+      "position": [
+        900,
+        360
+      ]
     },
     {
       "parameters": {},
@@ -130,7 +170,10 @@
       "name": "Store Anonymous Submission",
       "type": "n8n-nodes-base.noOp",
       "typeVersion": 1,
-      "position": [240, 600],
+      "position": [
+        240,
+        600
+      ],
       "notes": "Anonymous completions (optedIn=false, no PII) land here for future data. Wire this to your store: a Google Sheets 'Append', a Postgres/MySQL insert, a Cloudflare D1 query, or an Airtable 'Create'. Useful columns: submissionId, submittedAt, domain, primaryTask, priorityScore, priorityBand, annualROI, temperature, readinessTier. The matching opt-in event (if any) shares the same submissionId."
     }
   ],
@@ -138,30 +181,83 @@
     "Intake Webhook": {
       "main": [
         [
-          { "node": "Respond 200", "type": "main", "index": 0 },
-          { "node": "Opted In?", "type": "main", "index": 0 }
+          {
+            "node": "Respond 200",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Opted In?",
+            "type": "main",
+            "index": 0
+          }
         ]
       ]
     },
     "Opted In?": {
       "main": [
-        [{ "node": "Prepare Claude Request", "type": "main", "index": 0 }],
-        [{ "node": "Store Anonymous Submission", "type": "main", "index": 0 }]
+        [
+          {
+            "node": "Prepare Claude Request",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Store Anonymous Submission",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     },
     "Prepare Claude Request": {
-      "main": [[{ "node": "Claude - Generate Report", "type": "main", "index": 0 }]]
+      "main": [
+        [
+          {
+            "node": "Claude - Generate Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "Claude - Generate Report": {
-      "main": [[{ "node": "Parse & Build Report", "type": "main", "index": 0 }]]
+      "main": [
+        [
+          {
+            "node": "Parse & Build Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "Parse & Build Report": {
-      "main": [[{ "node": "GHL - Push Enriched Lead", "type": "main", "index": 0 }]]
+      "main": [
+        [
+          {
+            "node": "GHL - Push Enriched Lead",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     }
   },
   "active": false,
-  "settings": { "executionOrder": "v1" },
+  "settings": {
+    "executionOrder": "v1"
+  },
   "versionId": "a1000000-0000-0000-0000-000000000000",
-  "meta": { "templateCredsSetupCompleted": false, "instanceId": "local" },
-  "tags": [{ "name": "ai-readiness" }]
+  "meta": {
+    "templateCredsSetupCompleted": false,
+    "instanceId": "local"
+  },
+  "tags": [
+    {
+      "name": "ai-readiness"
+    }
+  ]
 }

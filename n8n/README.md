@@ -142,15 +142,36 @@ Report** and **GHL - Push Enriched Lead**:
 
 The `taaftUrl` for each area is already in the parse node output, ready to use.
 
-## Prompt updates
+## Editing the prompt and the Code nodes
 
-The Claude system prompt lives in two places:
+The two Code nodes and the system prompt are version-controlled as plain source,
+then spliced into the workflow JSON by a build script — so you never hand-edit
+escaped JSON:
 
-1. **`prompts/diagnosis-system-prompt.md`** — the version-controlled reference.
-   Edit here.
-2. **Prepare Claude Request** Code node — the runtime copy (embedded as the
-   `SYSTEM_PROMPT` constant). After editing the .md file, paste the updated
-   prompt into the Code node and re-save.
+- **`prompts/diagnosis-system-prompt.md`** — the Claude system prompt (source of
+  truth).
+- **`n8n/nodes/prepare-claude-request.js`** — the "Prepare Claude Request" node
+  (model, `max_tokens`, message assembly). `SYSTEM_PROMPT` is injected from the
+  `.md` at build time.
+- **`n8n/nodes/parse-build-report.js`** — the "Parse & Build Report" node
+  (JSON parsing, TAAFT URLs, report assembly).
+
+After editing any of those, regenerate the importable workflow and re-import it:
+
+```bash
+node scripts/build-workflow.cjs
+```
+
+The script syntax-checks both node bodies and rewrites
+`n8n/ai-readiness-report.workflow.json` in place.
+
+### What the report now contains
+
+The Claude output is decision-grade: each of the top-3 areas carries an
+impact/effort rating, a build-vs-buy `approach` with a rough investment band, an
+expected outcome, tool suggestions + a TAAFT link, and one "open question" left
+for the call — plus a top-level now/next/later `roadmap`. All new fields degrade
+gracefully (the parse node defaults anything missing to empty).
 
 ## Troubleshooting
 

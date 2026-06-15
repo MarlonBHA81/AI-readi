@@ -56,14 +56,20 @@ n8n Claude pipeline and arrive in the same GHL push a few seconds later.
 | --- | --- | --- |
 | `assessment_top_areas` | `assessment_top_areas` | Text (multi-line) |
 | `assessment_tool_suggestions` | `assessment_tool_suggestions` | Text (multi-line) |
+| `assessment_roadmap` | `assessment_roadmap` | Text (multi-line) |
 | `assessment_report_html` | `assessment_report_html` | Text (multi-line) |
 | `assessment_report_headline` | `assessment_report_headline` | Text |
 | `assessment_report_summary` | `assessment_report_summary` | Text |
+| `assessment_annual_roi_range` | `annualROIRangeFormatted` | Text |
 
 **`assessment_top_areas`** contains the full ranked text block, one area per
-section, with the Claude reasoning, tool suggestions, and the
-theresanaiforthat.com link for each area. Use this as the main body merge
-field in the report email.
+section. Each area now carries decision-grade detail: an impact/effort/approach
+line (with a rough investment band), the Claude reasoning, the expected outcome,
+tool suggestions, the theresanaiforthat.com link, and one "worth a conversation"
+open question. Use this as the main body merge field in the report email.
+
+**`assessment_roadmap`** is a short now / next / later sequence across the three
+areas — handy as a "your next 90 days" block.
 
 **`assessment_report_html`** is a ready-to-use HTML fragment (no `<html>` or
 `<body>` wrapper) containing headings, paragraphs, and anchor links. Paste
@@ -82,6 +88,11 @@ Notes:
   available as `annualROI`. `weeklyROI`, `frequencyScore`, `frictionScore`,
   `triedBefore`, and `whoDoesIt` are in the payload too if you want extra
   fields for reporting.
+- The ROI is the **value of reclaimed time** (`hours × rate × 50 weeks`), not a
+  revenue projection — keep the email wording consistent with that. An honest
+  range rides along: map `annualROIRangeFormatted` (e.g. `$18,500–$75,000`) to a
+  Text field `assessment_annual_roi_range` for the email's range line; the raw
+  bounds are also available as `annualROILow` / `annualROIHigh`.
 - Tracking fields also ride along: `submissionId` (links to the anonymous
   "results viewed" record for the same session), `stage` (always
   `report_requested` for leads that reach GHL), and `optedIn` (always `true`
@@ -155,9 +166,11 @@ Your top 3 areas to fix, in order:
 
 {{contact.assessment_top_areas}}
 
-The number that matters: automating these could give you back roughly
-${{contact.assessment_annual_roi}} per year in reclaimed time and lost
-revenue. Treat that as a directional estimate, not a guarantee.
+The number that matters: this is the value of the time you'd reclaim —
+roughly ${{contact.assessment_annual_roi}} per year (about
+{{contact.assessment_annual_roi_range}} depending on the exact hours and
+rate). Treat that as a directional estimate, not a guarantee; it does not
+assume any new revenue.
 
 In your own words, fixing this means:
 "{{contact.assessment_magic_wand}}"

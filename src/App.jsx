@@ -226,6 +226,32 @@ export function roundToNearest500(n) {
   return Math.round(n / 500) * 500;
 }
 
+// Round down / up to the nearest $500 so a displayed ROI range never overstates
+// (low rounds down, high rounds up).
+export function floor500(n) {
+  return Math.floor(n / 500) * 500;
+}
+export function ceil500(n) {
+  return Math.ceil(n / 500) * 500;
+}
+
+// Q4 hours and Q6 rate are buckets; these are each bucket's low/high edges,
+// keyed by the midpoint value stored in answers (hoursMid / rate). Used to turn
+// the single ROI point estimate into an honest range.
+const HOURS_RANGE = { 1: [1, 2], 3.5: [2, 5], 7.5: [5, 10], 12: [10, 15] };
+const RATE_RANGE = { 15: [10, 25], 50: [25, 75], 112: [75, 150], 175: [150, 250] };
+
+// Annual ROI range from the selected hours/rate buckets. Falls back to the
+// point value when a value isn't a known bucket (defensive).
+export function roiRangeFor(hoursMid, rate) {
+  const [hLow, hHigh] = HOURS_RANGE[hoursMid] || [hoursMid, hoursMid];
+  const [rLow, rHigh] = RATE_RANGE[rate] || [rate, rate];
+  return {
+    annualROILow: floor500(hLow * rLow * 50),
+    annualROIHigh: ceil500(hHigh * rHigh * 50),
+  };
+}
+
 export function formatCurrency(n) {
   return new Intl.NumberFormat("en-US", {
     style: "currency",
@@ -309,6 +335,7 @@ export function computeResults(a) {
   const weeklyROI = a.hoursMid * a.rate;
   const annualROIRaw = weeklyROI * 50;
   const annualROI = roundToNearest500(annualROIRaw); // headline + payload number
+  const { annualROILow, annualROIHigh } = roiRangeFor(a.hoursMid, a.rate);
   const tool = recommendTool(a);
   const tier = resolveTier(a.temp, priorityBand);
   return {
@@ -317,6 +344,8 @@ export function computeResults(a) {
     weeklyROI,
     annualROIRaw,
     annualROI,
+    annualROILow,
+    annualROIHigh,
     tool,
     tier,
     namedBottleneck: buildNamedBottleneck(a),
@@ -342,6 +371,9 @@ function buildAssessmentFields(answers, results) {
     weeklyROI: results.weeklyROI,
     annualROI: results.annualROI,
     annualROIFormatted: formatCurrency(results.annualROI),
+    annualROILow: results.annualROILow,
+    annualROIHigh: results.annualROIHigh,
+    annualROIRangeFormatted: `${formatCurrency(results.annualROILow)}–${formatCurrency(results.annualROIHigh)}`,
     frictionType: answers.frictionType,
     triedBefore: answers.tried,
     magicWand: answers.magicWand.trim(),
@@ -445,6 +477,8 @@ function escapeHtml(s) {
 function buildReportHtml(results, answers, contact) {
   const name = [contact.firstName, contact.lastName].filter(Boolean).join(" ").trim();
   const roi = formatCurrency(results.annualROI);
+  const roiLow = formatCurrency(results.annualROILow);
+  const roiHigh = formatCurrency(results.annualROIHigh);
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><title>AI Readiness Assessment</title>
 <style>
@@ -456,7 +490,7 @@ h1{font-size:22px} h2{font-size:16px;margin-top:28px} .roi{font-size:34px;color:
 <h1>${escapeHtml(results.headline)}</h1>
 <h2>The number</h2>
 <p class="roi">~${roi}/year</p>
-<p>Automating this could give you back roughly ${roi} per year in reclaimed time and lost revenue. Treat this as a directional estimate based on your answers, not a guarantee.</p>
+<p>This is the value of the time you'd reclaim &mdash; roughly ${roi} per year (about ${roiLow}&ndash;${roiHigh} depending on the exact hours and rate). It is ${answers.hoursMid} hours/week &times; ${formatCurrency(answers.rate)}/hr &times; 50 weeks. Treat this as a directional estimate based on your answers, not a guarantee; it does not assume any new revenue.</p>
 <h2>The bottleneck</h2>
 <p>${escapeHtml(results.namedBottleneck)}</p>
 <h2>In your own words</h2>
@@ -1045,12 +1079,22 @@ function ResultScreen({ results, answers, contact, setContact, errors, onRequest
           <p className="text-sm text-white/80">The number</p>
           <p className="mt-1 text-3xl font-bold">~{roi}/year</p>
           <p className="mt-2 text-sm leading-relaxed text-white/90">
-            Automating this could give you back roughly {roi}/year in reclaimed
-            time and lost revenue.
+            That's the value of the time you'd reclaim — roughly{" "}
+            {formatCurrency(results.annualROILow)}&ndash;{formatCurrency(results.annualROIHigh)}/year
+            depending on the exact hours and rate.
           </p>
-          <p className="mt-2 text-xs text-white/60">
-            A directional estimate based on your answers, not a guarantee.
+          <p className="mt-2 text-xs text-white/70">
+            {answers.hoursMid} hrs/week &times; {formatCurrency(answers.rate)}/hr &times; 50 weeks
           </p>
+          <details className="mt-2 text-xs text-white/60">
+            <summary className="cursor-pointer select-none">How we calculated this</summary>
+            <p className="mt-1 leading-relaxed">
+              We multiply the hours this task takes each week by what that time is
+              worth, across 50 working weeks. It's the value of the time you could
+              put back into the business — a directional estimate, not a guarantee,
+              and it doesn't assume any new revenue.
+            </p>
+          </details>
         </div>
 
         <div className="mt-5">

@@ -139,7 +139,10 @@ React only, so the app is safe in sandboxed embeds.
   Low (1–4) / Moderate (5–8) / High (9–12) / Critical (13–16).
 - **ROI anchor**: `weeklyROI = hours_mid × rate_mid`, `annualROI = weeklyROI × 50`,
   displayed rounded to the nearest $500 and always framed as "roughly", never a
-  guarantee.
+  guarantee. The result screen shows the arithmetic and an honest low–high range
+  derived from the hours/rate buckets the user picked (`roiRangeFor`, low rounds
+  down / high rounds up). The figure is the **value of reclaimed time** — it does
+  not assume new revenue.
 - **Tool recommendation** (first match wins): quotes / "something else" /
   data-in-operations → custom Claude skill; judgment-heavy email or support
   (handled by the owner or a senior person) → Claude Cowork; everything else →
