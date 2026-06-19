@@ -1,7 +1,12 @@
 // Source of truth for the "Parse & Build Report" Code node.
 // Parses Claude's JSON, builds TAAFT URLs, and assembles the enriched GHL
-// payload (original fields + decision-grade report fields). Every new field is
-// guarded, so an older or partial Claude response still renders.
+// payload (original fields + decision-grade report fields) plus a ready-to-send
+// customer email (emailSubject + emailHtml) for the Resend node. Every new field
+// is guarded, so an older or partial Claude response still renders.
+
+// Booking link used for the email CTA (prefilled with the lead's details).
+// Keep in sync with CALENDAR_URL in src/App.jsx.
+const BOOKING_URL = "https://link.storyadvantage.co.za/widget/booking/OqhZq68Xp8tgjqTnshgm";
 
 const claudeResponse = $input.first().json;
 const webhookBody = $('Intake Webhook').first().json.body;
@@ -96,7 +101,35 @@ const reportHtml =
   (roiRange ? ' (about ' + esc(roiRange) + ')' : '') +
   ' in reclaimed-time value. Treat as directional, not a guarantee; it does not assume new revenue.</em></p>';
 
-// --- 5. Enriched payload (original fields + report fields) ---
+// --- 5. Customer email (subject + full HTML) for the Resend node ---
+const firstName = webhookBody.firstName || '';
+const emailSubject =
+  (firstName ? firstName + ', ' : '') + 'your AI Readiness report' +
+  (roiFormatted ? ' — roughly ' + roiFormatted + '/year on the table' : '');
+
+// Booking CTA, prefilled with the lead's details (same params GHL reads).
+const bp = new URLSearchParams();
+if (webhookBody.firstName) bp.set('first_name', webhookBody.firstName);
+if (webhookBody.lastName) bp.set('last_name', webhookBody.lastName);
+if (webhookBody.email) bp.set('email', webhookBody.email);
+if (webhookBody.phone) bp.set('phone', webhookBody.phone);
+const bookingUrl = BOOKING_URL + (BOOKING_URL.indexOf('?') > -1 ? '&' : '?') + bp.toString();
+const ctaHtml =
+  '<p style="margin:24px 0"><a href="' + esc(bookingUrl) +
+  '" style="background:#2e75b6;color:#fff;text-decoration:none;padding:12px 20px;' +
+  'border-radius:8px;display:inline-block;font-weight:600">Book a 15-minute call</a></p>';
+
+const emailHtml =
+  '<div style="font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;' +
+  'color:#1f3b57;max-width:640px;margin:0 auto;line-height:1.55;padding:8px 4px">' +
+  '<p>Hi ' + esc(firstName || 'there') + ',</p>' +
+  '<p>Thanks for taking the AI Readiness Check — here is your full report.</p>' +
+  reportHtml +
+  ctaHtml +
+  '<p style="margin-top:24px">Talk soon,<br>The Small Business Helpdesk team</p>' +
+  '</div>';
+
+// --- 6. Enriched payload (original fields + report fields + email) ---
 const roadmapText = roadmap
   ? ['Now: ' + (roadmap.now || ''), 'Next: ' + (roadmap.next || ''), 'Later: ' + (roadmap.later || '')].join('\n')
   : '';
@@ -111,7 +144,10 @@ return [
       assessment_roadmap: roadmapText,
       assessment_report_html: reportHtml,
       assessment_report_headline: (diagnosis && diagnosis.headline) || '',
-      assessment_report_summary: (diagnosis && diagnosis.summary) || ''
+      assessment_report_summary: (diagnosis && diagnosis.summary) || '',
+      // Ready-to-send customer email for the Resend node:
+      emailSubject: emailSubject,
+      emailHtml: emailHtml
     })
   }
 ];
