@@ -35,6 +35,8 @@ Use GHL syntax `{{contact.field_key}}`. Two groups — treat them differently:
 | `{{contact.assessment_report_summary}}` | 2–3 sentence summary | — |
 | `{{contact.assessment_top_areas}}` | Ranked top‑3 areas (multi-line text) | — |
 | `{{contact.assessment_roadmap}}` | Now / Next / Later plan | — |
+| `{{contact.assessment_resource_url}}` | A relevant resource link, **chosen per lead** (their #1 area's tool-discovery page, or your own content) | https://theresanaiforthat.com/s/proposal+generation/top-rated/ |
+| `{{contact.assessment_resource_label}}` | Button/link text for that resource | "Explore tools for Quotes and proposals" |
 | `{{contact.company_name}}`, `{{contact.industry}}` | Business name, industry | Century 21 |
 
 **For SEGMENTATION / conditional logic only — never print these raw codes in an email:**
@@ -56,7 +58,7 @@ Design a distinct sequence for each. Cadence and intent differ; voice stays cons
 1. **Tier 1 — Emergency Fix (hot, High/Critical).** Highest intent, real money bleeding now. Tight and urgent: ~4 emails over 7 days. Lead with the cost of waiting. Primary CTA: book a call **this week**. (An internal SMS/email alert to the operator also fires — you can draft that too.)
 2. **Tier 2 — Clear ROI (warm).** Convinced of value, weighing it up. ~3 emails over 5 days: (a) the cost of waiting, (b) what the fix actually looks like, (c) a similar-business example. CTA: scope it on a 15-minute call.
 3. **Tier 3 — Roadmap (cool).** Early, smart, not ready. Patient value: ~4 weekly emails. Teach around their `assessment_domain` and `friction_type`. Soft CTA: book when ready.
-4. **Tier 4 — Starter (cold/Low).** Long horizon. Monthly, low-pressure, useful-only. CTA: a resource/case study, not a call.
+4. **Tier 4 — Starter (cold/Low).** Long horizon. Monthly, low-pressure, useful-only. CTA: a resource, not a call — use `{{contact.assessment_resource_label}}` as the link text pointing to `{{contact.assessment_resource_url}}` (already chosen to match this lead's top area, so it differs per contact).
 
 ## Voice & guardrails (non-negotiable)
 - Calm, plain, direct. Talk like a helpful expert, not a marketer.

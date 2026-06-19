@@ -8,6 +8,17 @@
 // Keep in sync with CALENDAR_URL in src/App.jsx.
 const BOOKING_URL = "https://link.storyadvantage.co.za/widget/booking/OqhZq68Xp8tgjqTnshgm";
 
+// Optional: your own resource/case-study link per business area (domain). Fill
+// any of these to override the auto-picked tool-discovery link. Leave blank to
+// fall back to the live theresanaiforthat.com link for the lead's #1 area.
+const RESOURCE_LINKS = {
+  acquisition: "",
+  conversion: "",
+  fulfillment: "",
+  operations: "",
+  retention: "",
+};
+
 const claudeResponse = $input.first().json;
 const webhookBody = $('Intake Webhook').first().json.body;
 
@@ -129,7 +140,19 @@ const emailHtml =
   '<p style="margin-top:24px">Talk soon,<br>The Small Business Helpdesk team</p>' +
   '</div>';
 
-// --- 6. Enriched payload (original fields + report fields + email) ---
+// --- 6. Per-lead resource link (for nurture CTAs that vary by lead) ---
+// Your own content for their area if set, else the live TAAFT link for their #1
+// area, else a TAAFT search for their domain. Always populated, never fabricated.
+const primaryArea = topAreas[0] || null;
+const resourceUrl =
+  RESOURCE_LINKS[webhookBody.domain] ||
+  (primaryArea && primaryArea.taaftUrl) ||
+  taaftUrl(webhookBody.domain || 'small business');
+const resourceLabel = primaryArea
+  ? 'Explore tools for ' + primaryArea.area
+  : 'Explore AI tools for your business';
+
+// --- 7. Enriched payload (original fields + report fields + email + resource) ---
 const roadmapText = roadmap
   ? ['Now: ' + (roadmap.now || ''), 'Next: ' + (roadmap.next || ''), 'Later: ' + (roadmap.later || '')].join('\n')
   : '';
@@ -137,6 +160,8 @@ const roadmapText = roadmap
 return [
   {
     json: Object.assign({}, webhookBody, {
+      assessment_resource_url: resourceUrl,
+      assessment_resource_label: resourceLabel,
       assessment_top_areas: topAreasText,
       assessment_tool_suggestions: topAreas.map(function (a) {
         return a.area + ': ' + (a.candidateTools || []).join(', ');

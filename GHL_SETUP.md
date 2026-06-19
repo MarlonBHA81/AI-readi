@@ -57,6 +57,8 @@ n8n Claude pipeline and arrive in the same GHL push a few seconds later.
 | `assessment_top_areas` | `assessment_top_areas` | Text (multi-line) |
 | `assessment_tool_suggestions` | `assessment_tool_suggestions` | Text (multi-line) |
 | `assessment_roadmap` | `assessment_roadmap` | Text (multi-line) |
+| `assessment_resource_url` | `assessment_resource_url` | Text |
+| `assessment_resource_label` | `assessment_resource_label` | Text |
 | `assessment_report_html` | `assessment_report_html` | Text (multi-line) |
 | `assessment_report_headline` | `assessment_report_headline` | Text |
 | `assessment_report_summary` | `assessment_report_summary` | Text |
