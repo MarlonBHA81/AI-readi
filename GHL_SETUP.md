@@ -93,6 +93,11 @@ Notes:
   range rides along: map `annualROIRangeFormatted` (e.g. `$18,500–$75,000`) to a
   Text field `assessment_annual_roi_range` for the email's range line; the raw
   bounds are also available as `annualROILow` / `annualROIHigh`.
+- The prospect picks their **currency** (USD, ZAR, GBP, EUR, AUD, CAD). It rides
+  along as `currency` (e.g. `ZAR`), and every ROI figure (`annualROIFormatted`,
+  `annualROIRangeFormatted`) is already formatted in that currency — so the email
+  merge fields display correctly without any per-currency logic in GHL. Map
+  `currency` to a `assessment_currency` Text field if you want it for reporting.
 - Tracking fields also ride along: `submissionId` (links to the anonymous
   "results viewed" record for the same session), `stage` (always
   `report_requested` for leads that reach GHL), and `optedIn` (always `true`

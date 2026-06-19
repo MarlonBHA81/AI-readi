@@ -20,6 +20,92 @@ const RETRY_DELAYS_MS = [5000, 15000, 45000];
 
 const BRAND = { navy: "#1F3B57", accent: "#2E75B6" };
 
+// Fallback currency when the visitor's region can't be detected. Change this to
+// match your primary market (e.g. "ZAR") if most traffic is from one country.
+const DEFAULT_CURRENCY = "USD";
+
+/* ════════════════════════════════════════════════════════════════════════
+   CURRENCIES
+   The hourly-rate question (Q6) and every ROI figure are shown in the
+   prospect's chosen currency. Rate buckets are entered in that currency, so
+   ROI = hoursMid × rate × 50 is already native — no FX conversion needed.
+   Each bucket: { label, value (midpoint), low, high } for the point + range.
+   roundStep keeps the displayed ROI clean at that currency's magnitude.
+   ════════════════════════════════════════════════════════════════════════ */
+
+const CURRENCIES = {
+  USD: {
+    code: "USD", symbol: "$", locale: "en-US", roundStep: 500,
+    rateBuckets: [
+      { label: "Under $25", value: 15, low: 10, high: 25 },
+      { label: "$25 to $75", value: 50, low: 25, high: 75 },
+      { label: "$75 to $150", value: 112, low: 75, high: 150 },
+      { label: "$150 or more", value: 175, low: 150, high: 250 },
+    ],
+  },
+  ZAR: {
+    code: "ZAR", symbol: "R", locale: "en-ZA", roundStep: 5000,
+    rateBuckets: [
+      { label: "Under R200", value: 120, low: 80, high: 200 },
+      { label: "R200 to R600", value: 400, low: 200, high: 600 },
+      { label: "R600 to R1,500", value: 1050, low: 600, high: 1500 },
+      { label: "R1,500 or more", value: 2000, low: 1500, high: 2500 },
+    ],
+  },
+  GBP: {
+    code: "GBP", symbol: "£", locale: "en-GB", roundStep: 500,
+    rateBuckets: [
+      { label: "Under £20", value: 12, low: 8, high: 20 },
+      { label: "£20 to £60", value: 40, low: 20, high: 60 },
+      { label: "£60 to £120", value: 90, low: 60, high: 120 },
+      { label: "£120 or more", value: 150, low: 120, high: 200 },
+    ],
+  },
+  EUR: {
+    code: "EUR", symbol: "€", locale: "en-IE", roundStep: 500,
+    rateBuckets: [
+      { label: "Under €25", value: 15, low: 10, high: 25 },
+      { label: "€25 to €70", value: 47, low: 25, high: 70 },
+      { label: "€70 to €140", value: 105, low: 70, high: 140 },
+      { label: "€140 or more", value: 170, low: 140, high: 230 },
+    ],
+  },
+  AUD: {
+    code: "AUD", symbol: "A$", locale: "en-AU", roundStep: 1000,
+    rateBuckets: [
+      { label: "Under A$40", value: 25, low: 15, high: 40 },
+      { label: "A$40 to A$100", value: 70, low: 40, high: 100 },
+      { label: "A$100 to A$200", value: 150, low: 100, high: 200 },
+      { label: "A$200 or more", value: 250, low: 200, high: 350 },
+    ],
+  },
+  CAD: {
+    code: "CAD", symbol: "C$", locale: "en-CA", roundStep: 500,
+    rateBuckets: [
+      { label: "Under C$35", value: 22, low: 12, high: 35 },
+      { label: "C$35 to C$90", value: 62, low: 35, high: 90 },
+      { label: "C$90 to C$180", value: 135, low: 90, high: 180 },
+      { label: "C$180 or more", value: 225, low: 180, high: 300 },
+    ],
+  },
+};
+
+// Pick a sensible default from the browser's region; fall back to DEFAULT_CURRENCY.
+function detectCurrency() {
+  try {
+    const region = (navigator.language || "").split("-")[1]?.toUpperCase();
+    const byRegion = {
+      ZA: "ZAR", US: "USD", GB: "GBP", UK: "GBP", AU: "AUD", NZ: "AUD", CA: "CAD",
+      IE: "EUR", DE: "EUR", FR: "EUR", ES: "EUR", IT: "EUR", NL: "EUR",
+      PT: "EUR", AT: "EUR", BE: "EUR", FI: "EUR",
+    };
+    const guess = region && byRegion[region];
+    return guess && CURRENCIES[guess] ? guess : DEFAULT_CURRENCY;
+  } catch {
+    return DEFAULT_CURRENCY;
+  }
+}
+
 /* ════════════════════════════════════════════════════════════════════════
    QUESTION DEFINITIONS
    Tags (the `value` / score fields) drive scoring and routing only.
@@ -90,12 +176,9 @@ export const QUESTIONS = [
     id: "q6",
     key: "rate",
     title: "Roughly what is that person's time worth per hour?",
-    options: [
-      { label: "Under $25", value: 15 },
-      { label: "$25 to $75", value: 50 },
-      { label: "$75 to $150", value: 112 },
-      { label: "$150 or more", value: 175 },
-    ],
+    // Options are resolved per selected currency at render time (QuestionScreen);
+    // these USD buckets are the default and keep the question valid on its own.
+    options: CURRENCIES.USD.rateBuckets,
   },
   {
     id: "q7",
@@ -222,40 +305,52 @@ export function priorityBandFor(score) {
   return "Critical";
 }
 
-export function roundToNearest500(n) {
-  return Math.round(n / 500) * 500;
+// Round to a step (low rounds down, high rounds up) so a displayed ROI range
+// never overstates. The step scales with the currency (CURRENCIES[].roundStep).
+export function roundToStep(n, step) {
+  return Math.round(n / step) * step;
 }
-
-// Round down / up to the nearest $500 so a displayed ROI range never overstates
-// (low rounds down, high rounds up).
+export function floorStep(n, step) {
+  return Math.floor(n / step) * step;
+}
+export function ceilStep(n, step) {
+  return Math.ceil(n / step) * step;
+}
+// USD-step convenience wrappers (kept for existing callers/tests).
+export function roundToNearest500(n) {
+  return roundToStep(n, 500);
+}
 export function floor500(n) {
-  return Math.floor(n / 500) * 500;
+  return floorStep(n, 500);
 }
 export function ceil500(n) {
-  return Math.ceil(n / 500) * 500;
+  return ceilStep(n, 500);
 }
 
-// Q4 hours and Q6 rate are buckets; these are each bucket's low/high edges,
-// keyed by the midpoint value stored in answers (hoursMid / rate). Used to turn
-// the single ROI point estimate into an honest range.
+// Q4 hours bucket edges, keyed by the midpoint stored in answers (hoursMid).
+// Hours are currency-independent; rate edges are stored on the answer when the
+// (currency-specific) rate bucket is selected.
 const HOURS_RANGE = { 1: [1, 2], 3.5: [2, 5], 7.5: [5, 10], 12: [10, 15] };
-const RATE_RANGE = { 15: [10, 25], 50: [25, 75], 112: [75, 150], 175: [150, 250] };
 
-// Annual ROI range from the selected hours/rate buckets. Falls back to the
-// point value when a value isn't a known bucket (defensive).
-export function roiRangeFor(hoursMid, rate) {
-  const [hLow, hHigh] = HOURS_RANGE[hoursMid] || [hoursMid, hoursMid];
-  const [rLow, rHigh] = RATE_RANGE[rate] || [rate, rate];
+// Annual ROI range from the selected hours/rate buckets, rounded at the
+// currency's step. Uses the rate edges captured on the answer (rateLow/rateHigh),
+// falling back to the point rate when absent (defensive).
+export function roiRangeFor(a, step = 500) {
+  const [hLow, hHigh] = HOURS_RANGE[a.hoursMid] || [a.hoursMid, a.hoursMid];
+  const rLow = a.rateLow ?? a.rate;
+  const rHigh = a.rateHigh ?? a.rate;
   return {
-    annualROILow: floor500(hLow * rLow * 50),
-    annualROIHigh: ceil500(hHigh * rHigh * 50),
+    annualROILow: floorStep(hLow * rLow * 50, step),
+    annualROIHigh: ceilStep(hHigh * rHigh * 50, step),
   };
 }
 
-export function formatCurrency(n) {
-  return new Intl.NumberFormat("en-US", {
+// Format a whole-currency amount in the prospect's chosen currency.
+export function formatCurrency(n, currencyCode = DEFAULT_CURRENCY) {
+  const cur = CURRENCIES[currencyCode] || CURRENCIES.USD;
+  return new Intl.NumberFormat(cur.locale, {
     style: "currency",
-    currency: "USD",
+    currency: cur.code,
     maximumFractionDigits: 0,
   }).format(n);
 }
@@ -330,12 +425,13 @@ export function buildNamedBottleneck(a) {
 
 // Assembles every derived value from the raw answers.
 export function computeResults(a) {
+  const step = (CURRENCIES[a.currency] || CURRENCIES[DEFAULT_CURRENCY]).roundStep;
   const priorityScore = a.freq * a.friction; // 1-16
   const priorityBand = priorityBandFor(priorityScore);
   const weeklyROI = a.hoursMid * a.rate;
   const annualROIRaw = weeklyROI * 50;
-  const annualROI = roundToNearest500(annualROIRaw); // headline + payload number
-  const { annualROILow, annualROIHigh } = roiRangeFor(a.hoursMid, a.rate);
+  const annualROI = roundToStep(annualROIRaw, step); // headline + payload number
+  const { annualROILow, annualROIHigh } = roiRangeFor(a, step);
   const tool = recommendTool(a);
   const tier = resolveTier(a.temp, priorityBand);
   return {
@@ -358,6 +454,7 @@ export function computeResults(a) {
 // rounded headline number so the figure in the report email matches the result
 // screen exactly.
 function buildAssessmentFields(answers, results) {
+  const cur = answers.currency || DEFAULT_CURRENCY;
   return {
     lever: answers.lever,
     domain: answers.domain,
@@ -368,12 +465,13 @@ function buildAssessmentFields(answers, results) {
     priorityScore: results.priorityScore,
     priorityBand: results.priorityBand,
     whoDoesIt: answers.who,
+    currency: cur,
     weeklyROI: results.weeklyROI,
     annualROI: results.annualROI,
-    annualROIFormatted: formatCurrency(results.annualROI),
+    annualROIFormatted: formatCurrency(results.annualROI, cur),
     annualROILow: results.annualROILow,
     annualROIHigh: results.annualROIHigh,
-    annualROIRangeFormatted: `${formatCurrency(results.annualROILow)}–${formatCurrency(results.annualROIHigh)}`,
+    annualROIRangeFormatted: `${formatCurrency(results.annualROILow, cur)}–${formatCurrency(results.annualROIHigh, cur)}`,
     frictionType: answers.frictionType,
     triedBefore: answers.tried,
     magicWand: answers.magicWand.trim(),
@@ -476,9 +574,10 @@ function escapeHtml(s) {
 
 function buildReportHtml(results, answers, contact) {
   const name = [contact.firstName, contact.lastName].filter(Boolean).join(" ").trim();
-  const roi = formatCurrency(results.annualROI);
-  const roiLow = formatCurrency(results.annualROILow);
-  const roiHigh = formatCurrency(results.annualROIHigh);
+  const cur = answers.currency || DEFAULT_CURRENCY;
+  const roi = formatCurrency(results.annualROI, cur);
+  const roiLow = formatCurrency(results.annualROILow, cur);
+  const roiHigh = formatCurrency(results.annualROIHigh, cur);
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><title>AI Readiness Assessment</title>
 <style>
@@ -490,7 +589,7 @@ h1{font-size:22px} h2{font-size:16px;margin-top:28px} .roi{font-size:34px;color:
 <h1>${escapeHtml(results.headline)}</h1>
 <h2>The number</h2>
 <p class="roi">~${roi}/year</p>
-<p>This is the value of the time you'd reclaim &mdash; roughly ${roi} per year (about ${roiLow}&ndash;${roiHigh} depending on the exact hours and rate). It is ${answers.hoursMid} hours/week &times; ${formatCurrency(answers.rate)}/hr &times; 50 weeks. Treat this as a directional estimate based on your answers, not a guarantee; it does not assume any new revenue.</p>
+<p>This is the value of the time you'd reclaim &mdash; roughly ${roi} per year (about ${roiLow}&ndash;${roiHigh} depending on the exact hours and rate). It is ${answers.hoursMid} hours/week &times; ${formatCurrency(answers.rate, cur)}/hr &times; 50 weeks. Treat this as a directional estimate based on your answers, not a guarantee; it does not assume any new revenue.</p>
 <h2>The bottleneck</h2>
 <p>${escapeHtml(results.namedBottleneck)}</p>
 <h2>In your own words</h2>
@@ -631,7 +730,10 @@ export default function App() {
     freq: null,
     hoursMid: null,
     who: null,
+    currency: detectCurrency(),
     rate: null,
+    rateLow: null,
+    rateHigh: null,
     frictionType: null,
     friction: null,
     tried: null,
@@ -710,6 +812,10 @@ export default function App() {
     setAnswers((prev) => {
       const next = { ...prev, [question.key]: option.value };
       if (question.key === "freq") next.hoursMid = option.hoursMid;
+      if (question.key === "rate") {
+        next.rateLow = option.low ?? null;
+        next.rateHigh = option.high ?? null;
+      }
       if (question.key === "task" && option.value !== "other") next.taskOther = "";
       return next;
     });
@@ -915,12 +1021,42 @@ function QuestionScreen({ question, answers, setAnswers, onSelect, onNext, isLas
     );
   }
 
+  const isRate = question.key === "rate";
+  const currency = answers.currency || DEFAULT_CURRENCY;
+  const options = isRate ? CURRENCIES[currency].rateBuckets : question.options;
   const showOtherText = question.otherValue && selected === question.otherValue;
   return (
     <div className="rounded-2xl bg-white p-6 shadow-sm sm:p-8">
       <h2 className="text-xl font-bold leading-snug text-navy">{question.title}</h2>
+      {isRate && (
+        <div className="mt-3 flex items-center gap-2">
+          <label htmlFor="currency-select" className="text-sm text-slate-600">
+            Currency
+          </label>
+          <select
+            id="currency-select"
+            value={currency}
+            onChange={(e) =>
+              setAnswers((p) => ({
+                ...p,
+                currency: e.target.value,
+                rate: null,
+                rateLow: null,
+                rateHigh: null,
+              }))
+            }
+            className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-navy focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+          >
+            {Object.keys(CURRENCIES).map((code) => (
+              <option key={code} value={code}>
+                {code} ({CURRENCIES[code].symbol})
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
       <div className="mt-4 space-y-2.5">
-        {question.options.map((option) => (
+        {options.map((option) => (
           <OptionButton
             key={String(option.value)}
             label={option.label}
@@ -1063,7 +1199,8 @@ function ResultScreen({ results, answers, contact, setContact, errors, onRequest
   );
 
   if (!results) return null;
-  const roi = formatCurrency(results.annualROI);
+  const cur = answers.currency || DEFAULT_CURRENCY;
+  const roi = formatCurrency(results.annualROI, cur);
   const showCalendar = results.tier.tier <= 2 || answers.delivery === "call";
   const submitted = webhookStatus === "sent";
 
@@ -1080,11 +1217,11 @@ function ResultScreen({ results, answers, contact, setContact, errors, onRequest
           <p className="mt-1 text-3xl font-bold">~{roi}/year</p>
           <p className="mt-2 text-sm leading-relaxed text-white/90">
             That's the value of the time you'd reclaim — roughly{" "}
-            {formatCurrency(results.annualROILow)}&ndash;{formatCurrency(results.annualROIHigh)}/year
+            {formatCurrency(results.annualROILow, cur)}&ndash;{formatCurrency(results.annualROIHigh, cur)}/year
             depending on the exact hours and rate.
           </p>
           <p className="mt-2 text-xs text-white/70">
-            {answers.hoursMid} hrs/week &times; {formatCurrency(answers.rate)}/hr &times; 50 weeks
+            {answers.hoursMid} hrs/week &times; {formatCurrency(answers.rate, cur)}/hr &times; 50 weeks
           </p>
           <details className="mt-2 text-xs text-white/60">
             <summary className="cursor-pointer select-none">How we calculated this</summary>

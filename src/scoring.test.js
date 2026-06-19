@@ -27,6 +27,8 @@ const exampleAnswers = {
   hoursMid: 7.5,
   who: "owner",
   rate: 112,
+  rateLow: 75,
+  rateHigh: 150,
   frictionType: "reliability",
   friction: 3,
   tried: "patched",
@@ -78,13 +80,54 @@ describe("ROI range", () => {
   });
 
   it("computes range bounds for the smallest and largest buckets", () => {
-    expect(roiRangeFor(1, 15)).toEqual({ annualROILow: 500, annualROIHigh: 2500 });
-    expect(roiRangeFor(12, 175)).toEqual({ annualROILow: 75000, annualROIHigh: 187500 });
+    expect(roiRangeFor({ hoursMid: 1, rate: 15, rateLow: 10, rateHigh: 25 }, 500)).toEqual({
+      annualROILow: 500,
+      annualROIHigh: 2500,
+    });
+    expect(roiRangeFor({ hoursMid: 12, rate: 175, rateLow: 150, rateHigh: 250 }, 500)).toEqual({
+      annualROILow: 75000,
+      annualROIHigh: 187500,
+    });
   });
 
   it("rounds the low bound down and the high bound up to the nearest 500", () => {
     expect(floor500(18750)).toBe(18500);
     expect(ceil500(18750)).toBe(19000);
+  });
+});
+
+describe("currency", () => {
+  it("formats USD by default and other currencies on request", () => {
+    expect(formatCurrency(42000)).toBe("$42,000");
+    expect(formatCurrency(42000, "USD")).toBe("$42,000");
+    const zar = formatCurrency(395000, "ZAR");
+    expect(zar).toMatch(/R/);
+    expect(zar.replace(/\D/g, "")).toBe("395000");
+  });
+
+  it("computes ROI natively in the selected currency with a currency-scaled step", () => {
+    const zarAnswers = { ...exampleAnswers, currency: "ZAR", rate: 1050, rateLow: 600, rateHigh: 1500 };
+    const r = computeResults(zarAnswers);
+    expect(r.annualROI).toBe(395000); // 7.5 x 1050 x 50 = 393,750 -> nearest 5,000
+    expect(r.annualROILow).toBe(150000); // floor(5 x 600 x 50) to 5,000
+    expect(r.annualROIHigh).toBe(750000); // ceil(10 x 1500 x 50) to 5,000
+  });
+
+  it("carries the currency and a currency-correct formatted ROI into the payload", () => {
+    const contact = {
+      firstName: "Jane",
+      lastName: "Doe",
+      businessName: "Acme",
+      email: "j@a.com",
+      phone: "+1 555 0100",
+      industry: "trades",
+    };
+    const zarAnswers = { ...exampleAnswers, currency: "ZAR", rate: 1050, rateLow: 600, rateHigh: 1500 };
+    const payload = buildPayload(zarAnswers, contact, computeResults(zarAnswers), "t", {
+      submissionId: "s",
+    });
+    expect(payload.currency).toBe("ZAR");
+    expect(payload.annualROIFormatted).toMatch(/R/);
   });
 });
 

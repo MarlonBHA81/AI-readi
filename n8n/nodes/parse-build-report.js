@@ -82,7 +82,8 @@ const roadmapHtml = roadmap
     '</ol>'
   : '';
 
-const roiFormatted = '$' + Number(webhookBody.annualROI || 0).toLocaleString();
+// Prefer the currency-correct string the client already formatted; fall back to $.
+const roiFormatted = webhookBody.annualROIFormatted || ('$' + Number(webhookBody.annualROI || 0).toLocaleString());
 const roiRange = webhookBody.annualROIRangeFormatted || '';
 
 const reportHtml =

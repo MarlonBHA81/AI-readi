@@ -185,7 +185,15 @@ Decisions made where the build spec left room:
 - **Anonymous completions are captured for data.** The moment results appear,
   the app POSTs the answers and scores (no PII) tagged `optedIn:false` with a
   per-session `submissionId`. A later opt-in reuses the same id, so completion
-  and conversion rates can be reconciled in the data store.
+  and conversion rates can be reconciled in the data store. View the anonymous
+  data with the standalone dashboard at
+  [`tools/anonymous-dashboard.html`](tools/anonymous-dashboard.html) (open it in
+  a browser; load an export or its URL).
+- **Currency is selectable** (USD, ZAR, GBP, EUR, AUD, CAD, auto-detected from
+  the browser). The hourly-rate question and every ROI figure use the chosen
+  currency natively — ROI is computed in that currency, not converted — and the
+  choice rides along in the payload as `currency`. Defaults are in `CURRENCIES`
+  at the top of `src/App.jsx`.
 - **`annualROI` in the payload is the rounded headline number** so the figure
   in the report email always matches the result screen. The raw weekly figure
   is sent as `weeklyROI`, and a pre-formatted `annualROIFormatted` (for
