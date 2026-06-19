@@ -35,8 +35,10 @@ Use GHL syntax `{{contact.field_key}}`. Two groups — treat them differently:
 | `{{contact.assessment_report_summary}}` | 2–3 sentence summary | — |
 | `{{contact.assessment_top_areas}}` | Ranked top‑3 areas (multi-line text) | — |
 | `{{contact.assessment_roadmap}}` | Now / Next / Later plan | — |
-| `{{contact.assessment_resource_url}}` | A relevant resource link, **chosen per lead** (their #1 area's tool-discovery page, or your own content) | https://theresanaiforthat.com/s/proposal+generation/top-rated/ |
-| `{{contact.assessment_resource_label}}` | Button/link text for that resource | "Explore tools for Quotes and proposals" |
+| `{{contact.assessment_report_url}}` | Link to the lead's hosted top-3 report page | https://reports.…/reports/abc123.html |
+| `{{contact.assessment_report_pdf_url}}` | Link to the same report as a PDF | https://reports.…/reports/abc123.pdf |
+| `{{contact.assessment_resource_url}}` | The lead's resource link — **their own report** when hosting is on, otherwise a tool-discovery link | (mirrors report_url) |
+| `{{contact.assessment_resource_label}}` | Button/link text for that resource | "View your AI Readiness report" |
 | `{{contact.company_name}}`, `{{contact.industry}}` | Business name, industry | Century 21 |
 
 **For SEGMENTATION / conditional logic only — never print these raw codes in an email:**

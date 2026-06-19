@@ -173,6 +173,48 @@ expected outcome, tool suggestions + a TAAFT link, and one "open question" left
 for the call — plus a top-level now/next/later `roadmap`. All new fields degrade
 gracefully (the parse node defaults anything missing to empty).
 
+## Hosted report page + PDF (Cloudflare R2 + Browser Rendering)
+
+The Parse node already builds the standalone report document and the URLs:
+
+- `assessment_report_page_html` — the full HTML document to host and to render to PDF.
+- `assessment_report_url` / `assessment_report_pdf_url` — public URLs, computed
+  deterministically from `submissionId` once you set the base.
+
+**1. Set the base.** At the top of `n8n/nodes/parse-build-report.js` set
+`REPORT_BASE_URL` to your R2 public URL (trailing slash), e.g.
+`https://reports.smallbusinesshelpdesk.co.za/` or the bucket's `…r2.dev/` URL,
+then `node scripts/build-workflow.cjs`. Until it's set, the URLs stay blank and
+the resource link falls back to the TAAFT link (no breakage).
+
+**2. Add these nodes between "Parse & Build Report" and the GHL/Resend nodes:**
+
+- **HTML → binary** (Code node) — make the page uploadable:
+  ```js
+  return [{ json: $json, binary: { page: { data: Buffer.from($json.assessment_report_page_html).toString('base64'), mimeType: 'text/html', fileName: $json.submissionId + '.html' } } }];
+  ```
+- **Upload page to R2** (S3 node, R2 credential) — Operation *Upload*; Bucket =
+  your bucket; File Key `reports/{{ $json.submissionId }}.html`; Binary property
+  `page`.
+- **Render PDF** (HTTP Request) — `POST https://api.cloudflare.com/client/v4/accounts/<ACCOUNT_ID>/browser-rendering/pdf`,
+  header `Authorization: Bearer <CF_API_TOKEN>` (token needs the *Browser
+  Rendering* permission), JSON body `{ "html": {{ JSON.stringify($json.assessment_report_page_html) }} }`,
+  Response → *File*, put output in binary property `pdf`.
+- **Upload PDF to R2** (S3 node) — File Key `reports/{{ $json.submissionId }}.pdf`;
+  Binary property `pdf`.
+
+**3. Plumbing notes.**
+- R2 uses the S3 API: in the n8n S3 credential set endpoint
+  `https://<ACCOUNT_ID>.r2.cloudflarestorage.com`, region `auto`, and an R2
+  **S3 API token** (Access Key ID + Secret).
+- Enable **public access** on the bucket (r2.dev) or attach a custom domain —
+  that public base is what `REPORT_BASE_URL` must match.
+- The GHL/Resend nodes downstream should read fields via
+  `{{ $('Parse & Build Report').item.json.<field> }}` (the upload/PDF nodes
+  change the active item), or keep `$json` flowing by passing it through.
+- The email can now link the report: use `{{contact.assessment_report_url}}` (or
+  the PDF) as a "View your full report" button.
+
 ## Troubleshooting
 
 | Symptom | Check |

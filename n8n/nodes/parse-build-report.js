@@ -19,6 +19,12 @@ const RESOURCE_LINKS = {
   retention: "",
 };
 
+// Public base URL where the hosted report page + PDF live (e.g. your Cloudflare
+// R2 public URL or custom domain, with trailing slash). When set, the report's
+// page/PDF URLs are computed deterministically from submissionId and become the
+// lead's resource link. Leave blank until the R2/hosting step is wired.
+const REPORT_BASE_URL = "";
+
 const claudeResponse = $input.first().json;
 const webhookBody = $('Intake Webhook').first().json.body;
 
@@ -140,17 +146,45 @@ const emailHtml =
   '<p style="margin-top:24px">Talk soon,<br>The Small Business Helpdesk team</p>' +
   '</div>';
 
-// --- 6. Per-lead resource link (for nurture CTAs that vary by lead) ---
-// Your own content for their area if set, else the live TAAFT link for their #1
-// area, else a TAAFT search for their domain. Always populated, never fabricated.
+// --- 5b. Standalone report document (source for the hosted page + the PDF) ---
+const fullName = [webhookBody.firstName, webhookBody.lastName].filter(Boolean).join(' ').trim();
+const preparedFor = (fullName ? 'Prepared for ' + fullName : 'Prepared for you') +
+  (webhookBody.businessName ? ', ' + webhookBody.businessName : '');
+const reportPageHtml =
+  '<!doctype html><html lang="en"><head><meta charset="utf-8">' +
+  '<meta name="viewport" content="width=device-width, initial-scale=1">' +
+  '<title>Your AI Readiness Report</title><style>' +
+  'body{font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#1f3b57;' +
+  'max-width:760px;margin:0 auto;padding:36px 22px;line-height:1.55}' +
+  'h1{font-size:24px;margin:6px 0 2px}h2{font-size:18px;margin-top:26px}h3{font-size:15px;margin-top:20px}' +
+  '.brand{font-size:12px;letter-spacing:.04em;text-transform:uppercase;color:#2e75b6;font-weight:700;margin:0}' +
+  '.prepared{color:#5a6b7d;font-size:13px;margin:2px 0 18px}' +
+  'a.book{background:#2e75b6;color:#fff;text-decoration:none;padding:12px 20px;border-radius:8px;' +
+  'display:inline-block;font-weight:600}hr{border:0;border-top:1px solid #e2e8f0;margin:22px 0}' +
+  '@media print{a.book{border:1px solid #2e75b6}}</style></head><body>' +
+  '<p class="brand">Small Business Helpdesk · AI Readiness Report</p>' +
+  '<p class="prepared">' + esc(preparedFor) + '</p>' +
+  reportHtml +
+  '<p style="margin:24px 0"><a class="book" href="' + esc(bookingUrl) + '">Book a 15-minute call</a></p>' +
+  '</body></html>';
+
+// --- 6. Report URLs (deterministic from submissionId) + per-lead resource ---
+const sid = webhookBody.submissionId || ('sub-' + Date.now());
+const reportUrl = REPORT_BASE_URL ? REPORT_BASE_URL + 'reports/' + sid + '.html' : '';
+const reportPdfUrl = REPORT_BASE_URL ? REPORT_BASE_URL + 'reports/' + sid + '.pdf' : '';
+
 const primaryArea = topAreas[0] || null;
+// The lead's own report is the best resource; fall back to your content, then TAAFT.
 const resourceUrl =
+  reportUrl ||
   RESOURCE_LINKS[webhookBody.domain] ||
   (primaryArea && primaryArea.taaftUrl) ||
   taaftUrl(webhookBody.domain || 'small business');
-const resourceLabel = primaryArea
-  ? 'Explore tools for ' + primaryArea.area
-  : 'Explore AI tools for your business';
+const resourceLabel = reportUrl
+  ? 'View your AI Readiness report'
+  : primaryArea
+    ? 'Explore tools for ' + primaryArea.area
+    : 'Explore AI tools for your business';
 
 // --- 7. Enriched payload (original fields + report fields + email + resource) ---
 const roadmapText = roadmap
@@ -170,6 +204,13 @@ return [
       assessment_report_html: reportHtml,
       assessment_report_headline: (diagnosis && diagnosis.headline) || '',
       assessment_report_summary: (diagnosis && diagnosis.summary) || '',
+      // Hosted report page + PDF (URLs are deterministic; the upload nodes write
+      // to the matching keys). assessment_report_page_html is the standalone
+      // document to host and to render to PDF — not for GHL, used by the R2/PDF
+      // nodes downstream.
+      assessment_report_url: reportUrl,
+      assessment_report_pdf_url: reportPdfUrl,
+      assessment_report_page_html: reportPageHtml,
       // Ready-to-send customer email for the Resend node:
       emailSubject: emailSubject,
       emailHtml: emailHtml
