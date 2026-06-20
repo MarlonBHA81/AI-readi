@@ -1,0 +1,24 @@
+{
+  "name": "ai-readiness-check",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "The 60-Second AI Readiness Check - scored lead-qualification assessment with GoHighLevel integration",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.1.4",
+    "@vitejs/plugin-react": "^4.4.1",
+    "tailwindcss": "^4.1.4",
+    "vite": "^6.3.2",
+    "vitest": "^3.1.2"
+  }
+}

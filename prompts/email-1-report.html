@@ -1,0 +1,86 @@
+<!--
+  Email 1 — AI Readiness Report (paste into a GHL email "Custom HTML" / code block).
+  Merge fields are GHL contact custom fields. first_name is always present
+  (required at opt-in). Replace the calendar link where marked.
+
+  NOTE: the "View your full report" + PDF buttons use assessment_report_url /
+  assessment_report_pdf_url. Those links only resolve once the Cloudflare R2
+  upload branch is live in n8n. Until then, either remove those two buttons or
+  finish that branch — the in-email content below stands on its own.
+-->
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f4f7fa;margin:0;padding:24px 0;font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#1f3b57">
+  <tr>
+    <td align="center">
+      <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="width:600px;max-width:600px;background:#ffffff;border-radius:14px;overflow:hidden">
+
+        <tr>
+          <td style="background:#1f3b57;padding:20px 28px;color:#ffffff;font-size:13px;letter-spacing:.04em;text-transform:uppercase;font-weight:700">
+            Small Business Helpdesk &middot; AI Readiness Report
+          </td>
+        </tr>
+
+        <tr>
+          <td style="padding:28px">
+            <p style="margin:0 0 14px;font-size:16px">Hi {{contact.first_name}},</p>
+            <p style="margin:0 0 16px;font-size:15px;line-height:1.55">
+              You told us that if this ran itself, "{{contact.assessment_magic_wand}}." Here is where AI can help you get there.
+            </p>
+
+            <p style="margin:0 0 6px;font-size:12px;text-transform:uppercase;letter-spacing:.04em;color:#64748b">Your #1 bottleneck</p>
+            <p style="margin:0 0 18px;font-size:15px;line-height:1.55">{{contact.assessment_named_bottleneck}}</p>
+
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#1f3b57;border-radius:10px;margin:0 0 20px">
+              <tr>
+                <td style="padding:18px 20px;color:#ffffff">
+                  <div style="font-size:13px;color:#cbd5e1">The number</div>
+                  <div style="font-size:26px;font-weight:700;margin:2px 0">~{{contact.assessment_annual_roi}}/year</div>
+                  <div style="font-size:13px;color:#e2e8f0;line-height:1.5">
+                    The value of the time you'd reclaim &mdash; roughly {{contact.assessment_annual_roi_range}}/year depending on the exact hours and rate.
+                  </div>
+                </td>
+              </tr>
+            </table>
+
+            <p style="margin:0 0 6px;font-size:18px;font-weight:700">{{contact.assessment_report_headline}}</p>
+            <p style="margin:0 0 20px;font-size:15px;line-height:1.55">{{contact.assessment_report_summary}}</p>
+
+            <p style="margin:0 0 8px;font-size:12px;text-transform:uppercase;letter-spacing:.04em;color:#64748b">Your top 3 priorities, in order</p>
+            <div style="white-space:pre-wrap;font-size:14px;line-height:1.55;background:#f4f7fa;border-radius:10px;padding:16px 18px;margin:0 0 22px">{{contact.assessment_top_areas}}</div>
+
+            <table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 0 10px">
+              <tr>
+                <td style="border-radius:8px;background:#2e75b6">
+                  <a href="{{contact.assessment_report_url}}" style="display:inline-block;padding:13px 24px;font-size:15px;font-weight:600;color:#ffffff;text-decoration:none">View your full report</a>
+                </td>
+              </tr>
+            </table>
+            <table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 0 16px">
+              <tr>
+                <td style="border-radius:8px;border:1px solid #2e75b6">
+                  <!-- replace with your GHL calendar booking link -->
+                  <a href="https://link.storyadvantage.co.za/widget/booking/OqhZq68Xp8tgjqTnshgm" style="display:inline-block;padding:12px 24px;font-size:15px;font-weight:600;color:#2e75b6;text-decoration:none">Book a 15-minute call</a>
+                </td>
+              </tr>
+            </table>
+
+            <p style="margin:0 0 18px;font-size:13px;color:#64748b">
+              Prefer a PDF? <a href="{{contact.assessment_report_pdf_url}}" style="color:#2e75b6">Download it here</a>.
+            </p>
+
+            <p style="margin:0 0 4px;font-size:15px;line-height:1.55">
+              The exact setup depends on how your business actually runs &mdash; that is what we map together on the call.
+            </p>
+            <p style="margin:18px 0 0;font-size:15px">Talk soon,<br>The Small Business Helpdesk team</p>
+          </td>
+        </tr>
+
+        <tr>
+          <td style="padding:16px 28px;background:#f4f7fa;font-size:12px;color:#94a3b8;line-height:1.5">
+            The figure above is a directional estimate of reclaimed-time value based on your answers, not a guarantee; it does not assume new revenue.
+          </td>
+        </tr>
+
+      </table>
+    </td>
+  </tr>
+</table>
