@@ -5,20 +5,22 @@ Paste this whole file into Claude Cowork as the task brief.
 ---
 
 ## Your role
-You're designing an email nurture sequence inside GoHighLevel (GHL) for an AI
+You're designing the email sequence inside GoHighLevel (GHL) for an AI
 consultancy ("Small Business Helpdesk"). Leads complete a self-serve "60-Second
-AI Readiness Check," get an instant on-screen result plus an emailed report, and
-land in GHL as a contact with rich assessment data attached. Your job: design the
-**follow-up email sequence** that turns those leads into **booked 15-minute
-calls**, while staying genuinely useful (not pushy).
+AI Readiness Check," see an instant on-screen result, and land in GHL as a
+contact with rich assessment data attached. An n8n automation then triggers a
+**personalized GHL email sequence based on their result tier**. Your job: design
+that **full sequence — starting with the report itself as the first email** — to
+turn leads into **booked 15-minute calls**, while staying genuinely useful (not
+pushy). GHL sends every email; there is no separate report sender.
 
 ## What the lead just experienced
 - Answered 12 questions about where their business is stuck.
-- Saw their #1 bottleneck with a dollar figure (the value of time they'd reclaim).
-- Opted in with their email/phone and got a report ranking their **top 3 AI
-  focus areas** with reasoning, suggested tools, and a 30/60/90 roadmap.
-- The Day‑0 report email is sent separately (it already exists). **You are
-  designing emails from Day 0/1 onward** — the nurture that follows the report.
+- Saw their #1 bottleneck with a dollar figure (the value of time they'd reclaim) on screen.
+- Opted in with their email/phone to receive the full **top-3 report** — ranked
+  AI focus areas with reasoning, suggested tools, and a 30/60/90 roadmap.
+- They have **not** received the report yet. **GHL delivers it as Email 1 of the
+  sequence you design**, then continues with the tier-specific follow-ups.
 
 ## The data you can personalize with (GHL merge fields)
 Use GHL syntax `{{contact.field_key}}`. Two groups — treat them differently:
@@ -33,6 +35,7 @@ Use GHL syntax `{{contact.field_key}}`. Two groups — treat them differently:
 | `{{contact.assessment_annual_roi_range}}` | Honest low–high range | $18,500–$75,000 |
 | `{{contact.assessment_report_headline}}` | One-line finding | — |
 | `{{contact.assessment_report_summary}}` | 2–3 sentence summary | — |
+| `{{contact.assessment_report_html}}` | The full report as a ready HTML block — drop into a Custom HTML email element for Email 1 | — |
 | `{{contact.assessment_top_areas}}` | Ranked top‑3 areas (multi-line text) | — |
 | `{{contact.assessment_roadmap}}` | Now / Next / Later plan | — |
 | `{{contact.assessment_report_url}}` | Link to the lead's hosted top-3 report page | https://reports.…/reports/abc123.html |
@@ -54,13 +57,23 @@ Use GHL syntax `{{contact.field_key}}`. Two groups — treat them differently:
 > The coded fields are tags — translate them into plain language yourself; don't
 > merge `efficiency` or `acquisition_leak` into visible copy.
 
-## The four tracks (segment on `assessment_tier`)
-Design a distinct sequence for each. Cadence and intent differ; voice stays constant.
+## Email 1 is the report — in every track
+The first email of all four tracks is the **report delivery** (Day 0, sent
+immediately). Design it once as a base, then adjust only its framing/subject per
+tier. It should:
+- open with `{{contact.first_name}}` and mirror their `{{contact.assessment_magic_wand}}` / `{{contact.assessment_named_bottleneck}}`,
+- deliver the report — either drop `{{contact.assessment_report_html}}` into a Custom HTML block, **or** give a short summary (`assessment_report_headline` + `assessment_report_summary` + `assessment_top_areas`) and a button to `{{contact.assessment_report_url}}` (and offer the PDF, `{{contact.assessment_report_pdf_url}}`),
+- state the ROI as reclaimed-time value (`{{contact.assessment_annual_roi}}`, "roughly"),
+- end with the booking CTA. Tier 1's version leads with urgency; Tier 4's is low-key.
 
-1. **Tier 1 — Emergency Fix (hot, High/Critical).** Highest intent, real money bleeding now. Tight and urgent: ~4 emails over 7 days. Lead with the cost of waiting. Primary CTA: book a call **this week**. (An internal SMS/email alert to the operator also fires — you can draft that too.)
-2. **Tier 2 — Clear ROI (warm).** Convinced of value, weighing it up. ~3 emails over 5 days: (a) the cost of waiting, (b) what the fix actually looks like, (c) a similar-business example. CTA: scope it on a 15-minute call.
-3. **Tier 3 — Roadmap (cool).** Early, smart, not ready. Patient value: ~4 weekly emails. Teach around their `assessment_domain` and `friction_type`. Soft CTA: book when ready.
-4. **Tier 4 — Starter (cold/Low).** Long horizon. Monthly, low-pressure, useful-only. CTA: a resource, not a call — use `{{contact.assessment_resource_label}}` as the link text pointing to `{{contact.assessment_resource_url}}` (already chosen to match this lead's top area, so it differs per contact).
+## The four tracks (segment on `assessment_tier`)
+Design a distinct sequence for each. Email 1 = the report (above); the follow-ups
+below differ by tier. Cadence and intent differ; voice stays constant.
+
+1. **Tier 1 — Emergency Fix (hot, High/Critical).** Highest intent, real money bleeding now. Email 1 (report, urgent framing) + ~3 follow-ups over 7 days. Lead with the cost of waiting. Primary CTA: book a call **this week**. (An internal SMS/email alert to the operator also fires — you can draft that too.)
+2. **Tier 2 — Clear ROI (warm).** Convinced of value, weighing it up. Email 1 (report) + ~3 follow-ups over 5 days: (a) the cost of waiting, (b) what the fix actually looks like, (c) a similar-business example. CTA: scope it on a 15-minute call.
+3. **Tier 3 — Roadmap (cool).** Early, smart, not ready. Email 1 (report) + ~4 weekly follow-ups. Teach around their `assessment_domain` and `friction_type`. Soft CTA: book when ready.
+4. **Tier 4 — Starter (cold/Low).** Long horizon. Email 1 (report) + monthly, low-pressure, useful-only follow-ups. CTA: a resource, not a call — use `{{contact.assessment_resource_label}}` as the link text pointing to `{{contact.assessment_resource_url}}` (their own report when hosting is on, else a tool-discovery link).
 
 ## Voice & guardrails (non-negotiable)
 - Calm, plain, direct. Talk like a helpful expert, not a marketer.
@@ -72,7 +85,9 @@ Design a distinct sequence for each. Cadence and intent differ; voice stays cons
 - Always offer a graceful out / fallback if a merge field might be empty.
 
 ## What to deliver
-For **each of the 4 tracks**, produce a table of emails with these columns:
+First, the shared **Email 1 (the report)** as a reusable base, plus its one-line
+per-tier framing/subject tweaks. Then, for **each of the 4 tracks**, a table of
+the follow-up emails with these columns:
 **Email # · Send delay (day offset) · Subject line · Preview text · Body (with merge fields) · CTA button text + link · Goal of this email.**
 
 Then add:
@@ -84,5 +99,6 @@ The CTA link is the GHL calendar booking link (the operator will paste the real
 URL). Output everything ready to paste into GHL email steps.
 
 ## Start by
-Confirming the four tracks and proposing the email count + cadence for each, then
-drafting Track 1 (Tier 1) in full before moving on.
+Drafting the shared **Email 1 (the report)** first, then confirming the four
+tracks with their follow-up count + cadence, then writing Track 1 (Tier 1) in
+full before moving on.
