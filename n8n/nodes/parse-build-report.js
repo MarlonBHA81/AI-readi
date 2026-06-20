@@ -23,7 +23,7 @@ const RESOURCE_LINKS = {
 // R2 public URL or custom domain, with trailing slash). When set, the report's
 // page/PDF URLs are computed deterministically from submissionId and become the
 // lead's resource link. Leave blank until the R2/hosting step is wired.
-const REPORT_BASE_URL = "";
+const REPORT_BASE_URL = "https://pub-9820996540fb432bb4502402f96ca009.r2.dev/";
 
 const claudeResponse = $input.first().json;
 const webhookBody = $('Intake Webhook').first().json.body;
